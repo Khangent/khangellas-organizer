@@ -454,7 +454,26 @@ function checkReminders() {
 //  Raid Organizer (Lost Ark weekly raid tracker)
 // ============================================================
 const RAID_DEFAULTS = ["Raid 1", "Raid 2", "Raid 3"];
-const mkRaids = () => RAID_DEFAULTS.map((n) => ({ id: uid(), name: n, done: false }));
+const mkRaids = () => RAID_DEFAULTS.map((n) => ({ id: uid(), name: n, done: false, gold: 0 }));
+
+// Distinct tint per character group (green, blue, orange, purple, red, yellow — cycles)
+const GROUP_COLORS = [
+  "rgba(76,175,80,0.32)",
+  "rgba(66,133,244,0.30)",
+  "rgba(245,150,40,0.34)",
+  "rgba(150,110,220,0.32)",
+  "rgba(235,90,90,0.30)",
+  "rgba(245,200,70,0.38)",
+];
+
+// Gold earned = sum of gold from cleared (checked) raids.
+function personGold(person) {
+  return person.characters.reduce(
+    (sum, c) => sum + c.raids.reduce((s, r) => s + (r.done ? Number(r.gold) || 0 : 0), 0),
+    0
+  );
+}
+const fmtGold = (n) => (Number(n) || 0).toLocaleString("en-US");
 const mkChar = (i) => ({ id: uid(), name: `Character ${i}`, cls: "", ilvl: "", img: "", raids: mkRaids() });
 
 // Pick + downscale a character photo, store it as a compact data URL.
@@ -525,9 +544,11 @@ function renderRaids() {
   const overall = $("#raid-progress-overall");
   overall.innerHTML = "";
   const all = raidStats(allCharacters());
+  const totalGold = raids.reduce((a, p) => a + personGold(p), 0);
   overall.append(
     el("span", { class: "raid-count", text: `${all.done} / ${all.total} raids cleared` }),
-    progressBar(all.done, all.total)
+    progressBar(all.done, all.total),
+    el("span", { class: "gold-badge", text: `🪙 ${fmtGold(totalGold)}` })
   );
 
   const wrap = $("#raid-people");
@@ -566,98 +587,139 @@ function renderRaids() {
     ]);
 
     const prog = el("div", { class: "person-progress" }, [
-      el("span", { class: "raid-count small", text: `${ps.done}/${ps.total} raids cleared` }),
+      el("span", { class: "raid-count small", text: `${ps.done}/${ps.total} raids` }),
       progressBar(ps.done, ps.total),
+      el("span", { class: "gold-badge", text: `🪙 ${fmtGold(personGold(person))}` }),
     ]);
 
-    const grid = el("div", { class: "char-grid" });
-    person.characters.forEach((ch) => {
+    // Build the character/raid table
+    const table = el("table", { class: "raid-table" });
+    table.append(
+      el("thead", {}, [
+        el("tr", {}, [
+          el("th", { text: "Character" }),
+          el("th", { text: "Raid" }),
+          el("th", { class: "center", text: "✓" }),
+          el("th", { class: "right", text: "Gold" }),
+          el("th", {}),
+        ]),
+      ])
+    );
+    const tbody = el("tbody");
+
+    person.characters.forEach((ch, ci) => {
       const cs = raidStats([ch]);
       const complete = cs.total > 0 && cs.done === cs.total;
+      const color = GROUP_COLORS[ci % GROUP_COLORS.length];
 
-      // Photo avatar — click to upload, ✕ to remove
+      // The character info cell (spans all of this character's raid rows)
       const avatar = el("div", {
-        class: "char-avatar", title: "Click to add or change photo",
+        class: "char-mini-avatar", title: "Click to add or change photo",
         onclick: () => pickCharImage(ch),
       }, [
         ch.img
           ? el("img", { src: ch.img, alt: ch.name })
-          : el("span", { class: "char-avatar-ph", text: (ch.name || "?").trim().charAt(0).toUpperCase() || "?" }),
-        el("span", { class: "char-avatar-edit", text: "📷" }),
+          : el("span", { class: "ph", text: (ch.name || "?").trim().charAt(0).toUpperCase() || "?" }),
       ]);
       if (ch.img) {
         avatar.append(el("button", {
-          class: "char-avatar-remove", title: "Remove photo", text: "✕",
+          class: "char-mini-remove", title: "Remove photo", text: "✕",
           onclick: (e) => { e.stopPropagation(); ch.img = ""; save.raids(); renderRaids(); },
         }));
       }
 
-      const rows = el("div", { class: "raid-rows" });
-      ch.raids.forEach((r) => {
-        rows.append(el("div", { class: `raid-row ${r.done ? "done" : ""}` }, [
-          el("button", {
-            class: `check ${r.done ? "on" : ""}`, title: "Toggle cleared",
-            onclick: () => { r.done = !r.done; save.raids(); renderRaids(); updateBadges(); },
-          }),
-          el("input", {
-            class: "raid-name", value: r.name, placeholder: "Raid name",
-            onchange: (e) => { r.name = e.target.value; save.raids(); },
-          }),
-          el("button", {
-            class: "icon-btn tiny", title: "Remove raid", text: "✕",
-            onclick: () => {
-              ch.raids = ch.raids.filter((x) => x.id !== r.id);
-              save.raids(); renderRaids(); updateBadges();
-            },
-          }),
-        ]));
-      });
-
-      grid.append(el("div", { class: `char-card ${complete ? "complete" : ""}` }, [
-        avatar,
-        el("div", { class: "char-body" }, [
-          el("div", { class: "char-head" }, [
-            el("input", {
-              class: "char-name", value: ch.name, placeholder: "Character",
-              onchange: (e) => { ch.name = e.target.value; save.raids(); renderRaids(); },
-            }),
-            el("span", {
-              class: `char-count ${complete ? "complete" : ""}`,
-              text: `${cs.done}/${cs.total}`,
-            }),
-          ]),
-          el("div", { class: "char-meta" }, [
-            el("input", {
-              class: "char-cls", value: ch.cls, placeholder: "Class",
-              onchange: (e) => { ch.cls = e.target.value; save.raids(); },
-            }),
-            el("input", {
-              class: "char-ilvl", value: ch.ilvl, placeholder: "Item lvl",
-              onchange: (e) => { ch.ilvl = e.target.value; save.raids(); },
-            }),
-          ]),
-          rows,
-          el("div", { class: "char-actions" }, [
-            el("button", {
-              class: "btn-ghost tiny", text: "+ Raid",
-              onclick: () => {
-                ch.raids.push({ id: uid(), name: `Raid ${ch.raids.length + 1}`, done: false });
-                save.raids(); renderRaids(); updateBadges();
-              },
-            }),
-            el("button", {
-              class: "icon-btn tiny", title: "Remove character", text: "🗑",
-              onclick: () => {
-                person.characters = person.characters.filter((x) => x.id !== ch.id);
-                save.raids(); renderRaids(); updateBadges();
-              },
-            }),
+      const charCell = el("td", {
+        class: `cell-char ${complete ? "complete" : ""}`,
+        rowspan: String(Math.max(1, ch.raids.length)),
+      }, [
+        el("div", { class: "char-mini" }, [
+          avatar,
+          el("div", { class: "char-mini-info" }, [
+            el("div", { class: "char-mini-top" }, [
+              el("input", {
+                class: "char-mini-name", value: ch.name, placeholder: "Character",
+                onchange: (e) => { ch.name = e.target.value; save.raids(); renderRaids(); },
+              }),
+              el("span", { class: `char-count ${complete ? "complete" : ""}`, text: `${cs.done}/${cs.total}` }),
+            ]),
+            el("div", { class: "char-mini-sub" }, [
+              el("input", {
+                class: "char-mini-cls", value: ch.cls, placeholder: "Class",
+                onchange: (e) => { ch.cls = e.target.value; save.raids(); },
+              }),
+              el("input", {
+                class: "char-mini-ilvl", value: ch.ilvl, placeholder: "ilvl",
+                onchange: (e) => { ch.ilvl = e.target.value; save.raids(); },
+              }),
+            ]),
+            el("div", { class: "char-mini-actions" }, [
+              el("button", {
+                class: "btn-ghost tiny", text: "+ Raid",
+                onclick: () => {
+                  ch.raids.push({ id: uid(), name: `Raid ${ch.raids.length + 1}`, done: false, gold: 0 });
+                  save.raids(); renderRaids(); updateBadges();
+                },
+              }),
+              el("button", {
+                class: "icon-btn tiny", title: "Remove character", text: "🗑",
+                onclick: () => {
+                  person.characters = person.characters.filter((x) => x.id !== ch.id);
+                  save.raids(); renderRaids(); updateBadges();
+                },
+              }),
+            ]),
           ]),
         ]),
-      ]));
+      ]);
+
+      const raidList = ch.raids.length ? ch.raids : [null]; // ensure a row even with no raids
+      raidList.forEach((r, ri) => {
+        const last = ri === raidList.length - 1;
+        const tr = el("tr", { class: `raid-tr ${r && r.done ? "done" : ""} ${last ? "grp-end" : ""}` });
+        if (ri === 0) tr.append(charCell);
+
+        if (!r) {
+          tr.append(el("td", { class: "cell-raid muted", colspan: "4", text: "No raids — use “+ Raid”." }));
+          tbody.append(tr);
+          return;
+        }
+
+        tr.append(
+          el("td", { class: "cell-raid", style: `background:${color}` }, [
+            el("input", {
+              class: "raid-name", value: r.name, placeholder: "Raid name",
+              onchange: (e) => { r.name = e.target.value; save.raids(); },
+            }),
+          ]),
+          el("td", { class: "cell-check" }, [
+            el("button", {
+              class: `check ${r.done ? "on" : ""}`, title: "Toggle cleared",
+              onclick: () => { r.done = !r.done; save.raids(); renderRaids(); updateBadges(); },
+            }),
+          ]),
+          el("td", { class: "cell-gold" }, [
+            el("input", {
+              class: "gold-input", type: "number", min: "0", step: "100",
+              value: r.gold ? String(r.gold) : "", placeholder: "–",
+              onchange: (e) => { r.gold = parseInt(e.target.value, 10) || 0; save.raids(); renderRaids(); },
+            }),
+          ]),
+          el("td", { class: "cell-act" }, [
+            el("button", {
+              class: "icon-btn tiny", title: "Remove raid", text: "✕",
+              onclick: () => {
+                ch.raids = ch.raids.filter((x) => x.id !== r.id);
+                save.raids(); renderRaids(); updateBadges();
+              },
+            }),
+          ])
+        );
+        tbody.append(tr);
+      });
     });
 
-    wrap.append(el("div", { class: "person-card" }, [head, prog, grid]));
+    table.append(tbody);
+    wrap.append(el("div", { class: "person-card" }, [head, prog, table]));
   });
 }
 
