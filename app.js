@@ -14,7 +14,12 @@ const store = {
     }
   },
   set(key, value) {
-    localStorage.setItem(key, JSON.stringify(value));
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      console.error("Storage failed for", key, e);
+      alert("Couldn't save — your browser storage is full. Try using fewer or smaller character photos.");
+    }
   },
 };
 
@@ -450,7 +455,44 @@ function checkReminders() {
 // ============================================================
 const RAID_DEFAULTS = ["Raid 1", "Raid 2", "Raid 3"];
 const mkRaids = () => RAID_DEFAULTS.map((n) => ({ id: uid(), name: n, done: false }));
-const mkChar = (i) => ({ id: uid(), name: `Character ${i}`, cls: "", ilvl: "", raids: mkRaids() });
+const mkChar = (i) => ({ id: uid(), name: `Character ${i}`, cls: "", ilvl: "", img: "", raids: mkRaids() });
+
+// Pick + downscale a character photo, store it as a compact data URL.
+function pickCharImage(ch) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.addEventListener("change", () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    resizeImage(file, 320, (dataUrl) => {
+      ch.img = dataUrl;
+      save.raids();
+      renderRaids();
+    });
+  });
+  input.click();
+}
+
+function resizeImage(file, maxSize, cb) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      cb(canvas.toDataURL("image/jpeg", 0.82));
+    };
+    img.onerror = () => alert("Sorry, that image couldn't be loaded.");
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
 const mkPerson = (name, charCount) => ({
   id: uid(),
   name,
@@ -497,13 +539,14 @@ function renderRaids() {
 
   raids.forEach((person) => {
     const ps = raidStats(person.characters);
+    const initial = (person.name || "P").trim().charAt(0).toUpperCase() || "P";
 
     const head = el("div", { class: "person-head" }, [
+      el("span", { class: "person-avatar", text: initial }),
       el("input", {
         class: "person-name", value: person.name, placeholder: "Player name",
-        onchange: (e) => { person.name = e.target.value; save.raids(); },
+        onchange: (e) => { person.name = e.target.value; save.raids(); renderRaids(); },
       }),
-      el("span", { class: "raid-count small", text: `${ps.done}/${ps.total}` }),
       el("button", {
         class: "btn-ghost tiny", text: "+ Character",
         onclick: () => {
@@ -522,9 +565,32 @@ function renderRaids() {
       }),
     ]);
 
+    const prog = el("div", { class: "person-progress" }, [
+      el("span", { class: "raid-count small", text: `${ps.done}/${ps.total} raids cleared` }),
+      progressBar(ps.done, ps.total),
+    ]);
+
     const grid = el("div", { class: "char-grid" });
     person.characters.forEach((ch) => {
       const cs = raidStats([ch]);
+      const complete = cs.total > 0 && cs.done === cs.total;
+
+      // Photo avatar — click to upload, ✕ to remove
+      const avatar = el("div", {
+        class: "char-avatar", title: "Click to add or change photo",
+        onclick: () => pickCharImage(ch),
+      }, [
+        ch.img
+          ? el("img", { src: ch.img, alt: ch.name })
+          : el("span", { class: "char-avatar-ph", text: (ch.name || "?").trim().charAt(0).toUpperCase() || "?" }),
+        el("span", { class: "char-avatar-edit", text: "📷" }),
+      ]);
+      if (ch.img) {
+        avatar.append(el("button", {
+          class: "char-avatar-remove", title: "Remove photo", text: "✕",
+          onclick: (e) => { e.stopPropagation(); ch.img = ""; save.raids(); renderRaids(); },
+        }));
+      }
 
       const rows = el("div", { class: "raid-rows" });
       ch.raids.forEach((r) => {
@@ -547,48 +613,51 @@ function renderRaids() {
         ]));
       });
 
-      grid.append(el("div", { class: "char-card" }, [
-        el("div", { class: "char-head" }, [
-          el("input", {
-            class: "char-name", value: ch.name, placeholder: "Character",
-            onchange: (e) => { ch.name = e.target.value; save.raids(); },
-          }),
-          el("span", {
-            class: `char-count ${cs.done === cs.total && cs.total > 0 ? "complete" : ""}`,
-            text: `${cs.done}/${cs.total}`,
-          }),
-        ]),
-        el("div", { class: "char-meta" }, [
-          el("input", {
-            class: "char-cls", value: ch.cls, placeholder: "Class",
-            onchange: (e) => { ch.cls = e.target.value; save.raids(); },
-          }),
-          el("input", {
-            class: "char-ilvl", value: ch.ilvl, placeholder: "Item lvl",
-            onchange: (e) => { ch.ilvl = e.target.value; save.raids(); },
-          }),
-        ]),
-        rows,
-        el("div", { class: "char-actions" }, [
-          el("button", {
-            class: "btn-ghost tiny", text: "+ Raid",
-            onclick: () => {
-              ch.raids.push({ id: uid(), name: `Raid ${ch.raids.length + 1}`, done: false });
-              save.raids(); renderRaids(); updateBadges();
-            },
-          }),
-          el("button", {
-            class: "icon-btn tiny", title: "Remove character", text: "🗑",
-            onclick: () => {
-              person.characters = person.characters.filter((x) => x.id !== ch.id);
-              save.raids(); renderRaids(); updateBadges();
-            },
-          }),
+      grid.append(el("div", { class: `char-card ${complete ? "complete" : ""}` }, [
+        avatar,
+        el("div", { class: "char-body" }, [
+          el("div", { class: "char-head" }, [
+            el("input", {
+              class: "char-name", value: ch.name, placeholder: "Character",
+              onchange: (e) => { ch.name = e.target.value; save.raids(); renderRaids(); },
+            }),
+            el("span", {
+              class: `char-count ${complete ? "complete" : ""}`,
+              text: `${cs.done}/${cs.total}`,
+            }),
+          ]),
+          el("div", { class: "char-meta" }, [
+            el("input", {
+              class: "char-cls", value: ch.cls, placeholder: "Class",
+              onchange: (e) => { ch.cls = e.target.value; save.raids(); },
+            }),
+            el("input", {
+              class: "char-ilvl", value: ch.ilvl, placeholder: "Item lvl",
+              onchange: (e) => { ch.ilvl = e.target.value; save.raids(); },
+            }),
+          ]),
+          rows,
+          el("div", { class: "char-actions" }, [
+            el("button", {
+              class: "btn-ghost tiny", text: "+ Raid",
+              onclick: () => {
+                ch.raids.push({ id: uid(), name: `Raid ${ch.raids.length + 1}`, done: false });
+                save.raids(); renderRaids(); updateBadges();
+              },
+            }),
+            el("button", {
+              class: "icon-btn tiny", title: "Remove character", text: "🗑",
+              onclick: () => {
+                person.characters = person.characters.filter((x) => x.id !== ch.id);
+                save.raids(); renderRaids(); updateBadges();
+              },
+            }),
+          ]),
         ]),
       ]));
     });
 
-    wrap.append(el("div", { class: "person-card" }, [head, grid]));
+    wrap.append(el("div", { class: "person-card" }, [head, prog, grid]));
   });
 }
 

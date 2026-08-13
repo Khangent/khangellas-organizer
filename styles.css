@@ -261,7 +261,7 @@ input[type="number"] { width: 80px; }
 .raid-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; flex-wrap: wrap; }
 .raid-progress { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 220px; }
 .raid-count { font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
-.raid-count.small { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; }
+.raid-count.small { font-size: 0.78rem; color: var(--text-muted); font-weight: 600; }
 
 .pbar {
   flex: 1; height: 8px; min-width: 80px;
@@ -273,55 +273,104 @@ input[type="number"] { width: 80px; }
   transition: width 0.3s ease;
 }
 
-.raid-people { display: flex; flex-direction: column; gap: 22px; }
+/* Players sit side by side and stack only when space runs out */
+.raid-people {
+  display: grid; gap: 20px; align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+}
 
 .person-card {
+  position: relative; overflow: hidden;
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow);
+  border-radius: 16px; padding: 18px; box-shadow: var(--shadow);
 }
-.person-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.person-card::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+}
+.person-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.person-avatar {
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: 10px;
+  display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 1rem;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+}
 .person-name {
   flex: 1; min-width: 0;
-  font-size: 1.1rem; font-weight: 700;
+  font-size: 1.15rem; font-weight: 700;
   border: 1px solid transparent; background: transparent;
   padding: 6px 9px; border-radius: 8px;
 }
 .person-name:hover { border-color: var(--border); }
+.person-progress { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
 
 .char-grid {
   display: grid; gap: 12px;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
 }
 .char-card {
   background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: 10px; padding: 12px;
-  display: flex; flex-direction: column; gap: 9px;
+  border-radius: 12px; overflow: hidden;
+  display: flex; flex-direction: column;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.12s;
 }
-.char-head { display: flex; align-items: center; gap: 8px; }
+.char-card:hover { transform: translateY(-2px); }
+.char-card.complete { border-color: var(--success); box-shadow: 0 0 0 1px var(--success) inset; }
+
+.char-avatar {
+  position: relative; aspect-ratio: 16 / 10; cursor: pointer; overflow: hidden;
+  background: linear-gradient(135deg, rgba(236,72,153,0.28), rgba(34,160,107,0.28));
+}
+.char-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.char-avatar-ph {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 2rem; font-weight: 800; color: rgba(255,255,255,0.9);
+  text-shadow: 0 1px 5px rgba(0,0,0,0.25);
+}
+.char-avatar-edit {
+  position: absolute; bottom: 6px; right: 6px;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: rgba(20,25,40,0.5); color: #fff;
+  display: grid; place-items: center; font-size: 0.75rem;
+  opacity: 0; transition: opacity 0.15s;
+}
+.char-avatar:hover .char-avatar-edit { opacity: 1; }
+.char-avatar-remove {
+  position: absolute; top: 6px; right: 6px; border: none; cursor: pointer;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: rgba(20,25,40,0.55); color: #fff; font-size: 0.72rem; line-height: 1;
+  display: grid; place-items: center; opacity: 0; transition: opacity 0.15s;
+}
+.char-avatar:hover .char-avatar-remove { opacity: 1; }
+
+.char-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.char-head { display: flex; align-items: center; gap: 6px; }
 .char-name {
-  flex: 1; min-width: 0; font-weight: 600;
+  flex: 1; min-width: 0; font-weight: 700; font-size: 0.9rem;
   border: 1px solid transparent; background: transparent;
-  padding: 5px 7px; border-radius: 7px;
+  padding: 4px 6px; border-radius: 7px;
 }
 .char-name:hover { border-color: var(--border); }
 .char-count {
-  font-size: 0.76rem; font-weight: 700; color: var(--text-muted);
-  padding: 3px 9px; border-radius: 999px; background: var(--surface);
+  font-size: 0.72rem; font-weight: 700; color: var(--text-muted);
+  padding: 3px 8px; border-radius: 999px; background: var(--surface);
   white-space: nowrap;
 }
 .char-count.complete { background: rgba(34,160,107,0.16); color: var(--accent); }
 
 .char-meta { display: flex; gap: 6px; }
-.char-cls, .char-ilvl { font-size: 0.8rem; padding: 6px 8px; flex: 1; min-width: 0; }
-.char-ilvl { max-width: 90px; }
+.char-cls, .char-ilvl { font-size: 0.78rem; padding: 6px 8px; flex: 1; min-width: 0; }
+.char-ilvl { max-width: 78px; }
 
 .raid-rows { display: flex; flex-direction: column; gap: 6px; }
-.raid-row { display: flex; align-items: center; gap: 8px; }
-.raid-row .check { width: 20px; height: 20px; }
+.raid-row {
+  display: flex; align-items: center; gap: 7px;
+  background: var(--surface); border-radius: 8px; padding: 4px 6px;
+}
+.raid-row .check { width: 19px; height: 19px; }
 .raid-name {
-  flex: 1; min-width: 0; font-size: 0.85rem;
-  padding: 6px 8px; border: 1px solid transparent;
-  background: var(--surface); border-radius: 7px;
+  flex: 1; min-width: 0; font-size: 0.82rem;
+  padding: 4px 6px; border: 1px solid transparent;
+  background: transparent; border-radius: 6px;
 }
 .raid-name:hover { border-color: var(--border); }
 .raid-row.done .raid-name { text-decoration: line-through; color: var(--text-muted); }
@@ -330,8 +379,8 @@ input[type="number"] { width: 80px; }
   display: flex; align-items: center; justify-content: space-between;
   gap: 6px; margin-top: 2px;
 }
-.btn-ghost.tiny { font-size: 0.8rem; padding: 5px 10px; }
-.icon-btn.tiny { font-size: 0.85rem; padding: 5px; }
+.btn-ghost.tiny { font-size: 0.78rem; padding: 5px 9px; }
+.icon-btn.tiny { font-size: 0.82rem; padding: 4px; }
 
 /* ---------- TCG Collector ---------- */
 .tcg-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
