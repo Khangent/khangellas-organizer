@@ -108,6 +108,7 @@ function updateBadges() {
   setBadge("reminders", reminders.filter((r) => !r.notified).length);
   const rs = raidStats(allCharacters());
   setBadge("raids", rs.total - rs.done);
+  setBadge("tcg", TCG_ALL.filter((c) => !tcgOwned[c.id]).length);
 }
 
 // ============================================================
@@ -607,6 +608,102 @@ $("#raid-reset-week").addEventListener("click", () => {
 });
 
 // ============================================================
+//  TCG Collector (Espeon & Umbreon Pokémon cards)
+// ============================================================
+const TCG_ALL = window.TCG_CARDS || [];
+let tcgOwned = store.get("org.tcg", {}); // { cardId: true }
+let tcgMon = "all", tcgQuery = "", tcgMissingOnly = false;
+save.tcg = () => store.set("org.tcg", tcgOwned);
+
+function matchesMon(c) {
+  if (tcgMon === "Umbreon") return c.mon !== "Espeon";
+  if (tcgMon === "Espeon") return c.mon !== "Umbreon";
+  return true;
+}
+
+function tcgFiltered() {
+  const q = tcgQuery.toLowerCase();
+  return TCG_ALL.filter((c) => {
+    if (!matchesMon(c)) return false;
+    if (tcgMissingOnly && tcgOwned[c.id]) return false;
+    if (q && !`${c.name} ${c.set} ${c.number} ${c.rarity} ${c.series}`.toLowerCase().includes(q))
+      return false;
+    return true;
+  });
+}
+
+function updateTcgProgress() {
+  const scope = TCG_ALL.filter(matchesMon);
+  const owned = scope.filter((c) => tcgOwned[c.id]).length;
+  const bar = $("#tcg-progress");
+  bar.innerHTML = "";
+  bar.append(
+    el("span", { class: "raid-count", text: `${owned} / ${scope.length} collected` }),
+    progressBar(owned, scope.length)
+  );
+}
+
+function buildTcgCard(c) {
+  const owned = !!tcgOwned[c.id];
+  const node = el("div", { class: `tcg-card ${owned ? "owned" : ""}`, title: c.name }, [
+    el("div", { class: "tcg-img" }, [
+      c.img
+        ? el("img", { src: c.img, alt: c.name, loading: "lazy" })
+        : el("div", { class: "tcg-noimg", text: "No image" }),
+    ]),
+    el("div", { class: "tcg-check", text: owned ? "✓" : "" }),
+    el("div", { class: "tcg-info" }, [
+      el("div", { class: "tcg-name", text: c.name }),
+      el("div", { class: "tcg-sub", text: `${c.set} · #${c.number}` }),
+      el("div", { class: "tcg-rarity", text: c.rarity || "—" }),
+    ]),
+  ]);
+  node.addEventListener("click", () => {
+    const now = !tcgOwned[c.id];
+    if (now) tcgOwned[c.id] = true;
+    else delete tcgOwned[c.id];
+    save.tcg();
+    if (tcgMissingOnly) {
+      renderTCG();
+    } else {
+      node.classList.toggle("owned", now);
+      node.querySelector(".tcg-check").textContent = now ? "✓" : "";
+      updateTcgProgress();
+      updateBadges();
+    }
+  });
+  return node;
+}
+
+function renderTCG() {
+  $$(".tcg-tab").forEach((b) => b.classList.toggle("active", b.dataset.mon === tcgMon));
+  updateTcgProgress();
+  const grid = $("#tcg-grid");
+  grid.innerHTML = "";
+  const list = tcgFiltered();
+  if (!list.length) {
+    grid.append(el("div", { class: "empty", text: "No cards match your filters." }));
+    return;
+  }
+  list.forEach((c) => grid.append(buildTcgCard(c)));
+}
+
+$$(".tcg-tab").forEach((b) =>
+  b.addEventListener("click", () => {
+    tcgMon = b.dataset.mon;
+    renderTCG();
+  })
+);
+$("#tcg-search").addEventListener("input", (e) => {
+  tcgQuery = e.target.value.trim();
+  renderTCG();
+});
+$("#tcg-missing-only").addEventListener("change", (e) => {
+  tcgMissingOnly = e.target.checked;
+  renderTCG();
+});
+
+// ============================================================
 //  Init
 // ============================================================
 if (!raids.length) {
@@ -618,6 +715,7 @@ renderShopping();
 renderCalendar();
 renderReminders();
 renderRaids();
+renderTCG();
 updateBadges();
 refreshNotifNotice();
 

@@ -333,6 +333,60 @@ input[type="number"] { width: 80px; }
 .btn-ghost.tiny { font-size: 0.8rem; padding: 5px 10px; }
 .icon-btn.tiny { font-size: 0.85rem; padding: 5px; }
 
+/* ---------- TCG Collector ---------- */
+.tcg-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.tcg-tabs { display: flex; gap: 4px; background: var(--surface-2); padding: 4px; border-radius: 10px; }
+.tcg-tab {
+  border: none; background: transparent; color: var(--text-muted);
+  font: inherit; font-weight: 600; padding: 7px 15px;
+  border-radius: 8px; cursor: pointer; transition: background 0.15s, color 0.15s;
+}
+.tcg-tab:hover { color: var(--text); }
+.tcg-tab.active { background: var(--primary); color: #fff; }
+#tcg-search { flex: 1; min-width: 160px; }
+.tcg-toggle {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.85rem; color: var(--text-muted); cursor: pointer; white-space: nowrap;
+}
+.tcg-toggle input { width: auto; }
+
+.tcg-progress { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+
+.tcg-grid {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+}
+.tcg-card {
+  position: relative; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; overflow: hidden; box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.tcg-card:hover { transform: translateY(-3px); }
+.tcg-img { aspect-ratio: 245 / 342; background: var(--surface-2); }
+.tcg-img img {
+  width: 100%; height: 100%; object-fit: contain; display: block;
+  transition: filter 0.15s, opacity 0.15s;
+}
+.tcg-card:not(.owned) .tcg-img img { filter: grayscale(0.9); opacity: 0.5; }
+.tcg-noimg {
+  width: 100%; height: 100%; display: grid; place-items: center;
+  color: var(--text-muted); font-size: 0.75rem;
+}
+.tcg-check {
+  position: absolute; top: 8px; right: 8px;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: rgba(20, 25, 40, 0.4); color: #fff;
+  display: grid; place-items: center; font-size: 0.9rem; font-weight: 700;
+}
+.tcg-card.owned { border-color: var(--success); box-shadow: 0 0 0 2px var(--success), var(--shadow); }
+.tcg-card.owned .tcg-check { background: var(--success); }
+.tcg-info { padding: 8px 10px 10px; }
+.tcg-name { font-size: 0.82rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tcg-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tcg-rarity { font-size: 0.66rem; color: var(--text-muted); margin-top: 2px; }
+
 @media (max-width: 720px) {
   .app { flex-direction: column; }
   .sidebar { width: 100%; height: auto; position: relative; flex-direction: column; }

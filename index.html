@@ -34,6 +34,10 @@
           <span class="icon">⚔️</span><span>Raid Organizer</span>
           <span class="badge" id="badge-raids"></span>
         </button>
+        <button class="menu-item" data-view="tcg">
+          <span class="icon">🃏</span><span>TCG Collector</span>
+          <span class="badge" id="badge-tcg"></span>
+        </button>
       </nav>
       <div class="sidebar-footer">
         <button id="theme-toggle" class="theme-toggle">
@@ -129,9 +133,29 @@
         </div>
         <div class="raid-people" id="raid-people"></div>
       </section>
+
+      <!-- TCG Collector view -->
+      <section class="view" id="view-tcg">
+        <header class="view-header">
+          <h2>TCG Collector</h2>
+          <p class="view-sub">Every Espeon &amp; Umbreon card ever printed. Click a card to mark it collected.</p>
+        </header>
+        <div class="tcg-toolbar">
+          <div class="tcg-tabs">
+            <button class="tcg-tab active" data-mon="all">All</button>
+            <button class="tcg-tab" data-mon="Umbreon">Umbreon</button>
+            <button class="tcg-tab" data-mon="Espeon">Espeon</button>
+          </div>
+          <input type="text" id="tcg-search" placeholder="Search set, name, number…" autocomplete="off" />
+          <label class="tcg-toggle"><input type="checkbox" id="tcg-missing-only" /> Missing only</label>
+        </div>
+        <div class="tcg-progress" id="tcg-progress"></div>
+        <div class="tcg-grid" id="tcg-grid"></div>
+      </section>
     </main>
   </div>
 
+  <script src="tcg-data.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
