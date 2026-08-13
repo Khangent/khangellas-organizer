@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Khangella's Organizer</title>
-  <link rel="stylesheet" href="styles.css?v=13" />
+  <link rel="stylesheet" href="styles.css?v=14" />
 </head>
 <body>
   <div class="app">
@@ -40,6 +40,9 @@
         </button>
         <button class="menu-item" data-view="ai">
           <span class="icon">✨</span><span>AI Assistant</span>
+        </button>
+        <button class="menu-item" data-view="sync">
+          <span class="icon">☁️</span><span>Sync</span>
         </button>
       </nav>
       <div class="sidebar-footer">
@@ -188,10 +191,38 @@
           <button type="button" class="btn-ghost" id="ai-clear">Clear</button>
         </form>
       </section>
+
+      <!-- Sync view -->
+      <section class="view" id="view-sync">
+        <header class="view-header">
+          <h2>Cloud Sync</h2>
+          <p class="view-sub">Sign in with your shared account to sync everything across devices in realtime.</p>
+        </header>
+        <div class="sync-card">
+          <div class="sync-statusline"><span class="ai-status" id="sync-status"></span></div>
+          <div id="sync-signedout">
+            <form class="sync-form" id="sync-form">
+              <label>Email
+                <input type="email" id="sync-email" autocomplete="username" placeholder="you@example.com" required />
+              </label>
+              <label>Password
+                <input type="password" id="sync-pass" autocomplete="current-password" placeholder="••••••••" required />
+              </label>
+              <button type="submit" class="btn-primary">Sign in &amp; sync</button>
+            </form>
+            <p class="ai-hint">🔒 Your data lives in your own Supabase database. Only someone signed into this account can read or change it. Your AI key is never synced — it stays on each device.</p>
+          </div>
+          <div id="sync-signedin" hidden>
+            <p class="sync-who">Signed in as <strong id="sync-email-label"></strong>. Everything syncs automatically across your devices. ✅</p>
+            <button class="btn-ghost" id="sync-signout">Sign out</button>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 
-  <script src="tcg-data.js?v=13"></script>
-  <script src="app.js?v=13"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="tcg-data.js?v=14"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>

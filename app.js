@@ -20,6 +20,8 @@ const store = {
       console.error("Storage failed for", key, e);
       alert("Couldn't save — your browser storage is full. Try using fewer or smaller character photos.");
     }
+    // Push local changes to the cloud (no-op until sync is initialized + signed in)
+    if (window.__ORG_SYNC) window.__ORG_SYNC.onChange(key);
   },
 };
 
@@ -1040,6 +1042,170 @@ $("#ai-clear").addEventListener("click", () => {
 });
 
 // ============================================================
+//  Cloud Sync (Supabase) — shares all data across devices in realtime
+// ============================================================
+const SUPABASE_URL = "https://audcuqjwpdqeyxvjyrin.supabase.co";
+const SUPABASE_ANON =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1ZGN1cWp3cGRxZXl4dmp5cmluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY2MjA5MDgsImV4cCI6MjEwMjE5NjkwOH0.ppvvaI5queLd-Z8uKEn-OHZQ4YxiYZvMl9vnOFaObRo";
+// Everything syncs EXCEPT the AI key/chat (org.ai, org.aichat stay device-local).
+const SYNC_KEYS = ["org.todos", "org.shopping", "org.events", "org.reminders", "org.raids", "org.tcg", "org.theme"];
+const syncClientId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+let sb = null;
+let syncUser = null; // { id, email }
+let syncApplying = false; // true while writing remote data locally (prevents echo)
+let syncPushTimer = null;
+let syncChannel = null;
+
+function setSyncStatus(text, kind = "") {
+  const s = $("#sync-status");
+  if (s) { s.textContent = text; s.className = "ai-status " + kind; }
+}
+
+function renderSyncUI() {
+  const out = $("#sync-signedout");
+  const inn = $("#sync-signedin");
+  if (!out || !inn) return;
+  if (syncUser) {
+    out.hidden = true; inn.hidden = false;
+    $("#sync-email-label").textContent = syncUser.email || "";
+  } else {
+    out.hidden = false; inn.hidden = true;
+  }
+}
+
+function collectState() {
+  const out = {};
+  SYNC_KEYS.forEach((k) => {
+    const raw = localStorage.getItem(k);
+    if (raw != null) { try { out[k] = JSON.parse(raw); } catch {} }
+  });
+  return out;
+}
+
+// Write a remote snapshot into local state and re-render every view.
+function applyRemoteState(data) {
+  if (!data) return;
+  syncApplying = true;
+  try {
+    SYNC_KEYS.forEach((k) => {
+      if (k in data) localStorage.setItem(k, JSON.stringify(data[k]));
+    });
+    todos = store.get("org.todos", []);
+    shopping = store.get("org.shopping", []);
+    events = store.get("org.events", []);
+    reminders = store.get("org.reminders", []);
+    raids = store.get("org.raids", []);
+    tcgOwned = store.get("org.tcg", {});
+    if (data["org.theme"]) applyTheme(data["org.theme"]);
+    renderTodos(); renderShopping(); renderCalendar(); renderReminders();
+    renderRaids(); renderTCG(); updateBadges();
+  } finally {
+    syncApplying = false;
+  }
+}
+
+async function pushStateNow() {
+  if (!syncUser || !sb) return;
+  const payload = { ...collectState(), _by: syncClientId, _ts: Date.now() };
+  const { error } = await sb
+    .from("app_state")
+    .upsert({ user_id: syncUser.id, data: payload, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+  if (error) { console.error("[sync] push", error); setSyncStatus("Save failed: " + error.message, "warn"); }
+  else setSyncStatus("Synced ✓", "ok");
+}
+
+function scheduleSyncPush() {
+  if (!syncUser) return;
+  setSyncStatus("Saving…", "");
+  clearTimeout(syncPushTimer);
+  syncPushTimer = setTimeout(pushStateNow, 700);
+}
+
+async function pullState() {
+  if (!syncUser || !sb) return;
+  const { data, error } = await sb.from("app_state").select("data").eq("user_id", syncUser.id).maybeSingle();
+  if (error) { console.error("[sync] pull", error); setSyncStatus("Read failed: " + error.message, "warn"); return; }
+  if (data && data.data && Object.keys(data.data).length) {
+    applyRemoteState(data.data);
+    setSyncStatus("Synced ✓", "ok");
+  } else {
+    await pushStateNow(); // first device — seed the cloud from local
+  }
+}
+
+function subscribeRealtime() {
+  if (!syncUser || !sb) return;
+  if (syncChannel) { sb.removeChannel(syncChannel); syncChannel = null; }
+  syncChannel = sb
+    .channel("app_state_" + syncUser.id)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "app_state", filter: "user_id=eq." + syncUser.id },
+      (payload) => {
+        const d = payload.new && payload.new.data;
+        if (!d || d._by === syncClientId) return; // ignore our own writes
+        applyRemoteState(d);
+        setSyncStatus("Updated from another device ✓", "ok");
+      }
+    )
+    .subscribe();
+}
+
+async function onSignedIn(user) {
+  syncUser = { id: user.id, email: user.email };
+  renderSyncUI();
+  setSyncStatus("Connecting…", "");
+  await pullState();
+  subscribeRealtime();
+}
+
+async function syncSignIn(email, password) {
+  if (!sb) { setSyncStatus("Sync unavailable — library didn't load.", "warn"); return; }
+  setSyncStatus("Signing in…", "");
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) { setSyncStatus("Sign-in failed: " + error.message, "warn"); return; }
+  await onSignedIn(data.user);
+}
+
+async function syncSignOut() {
+  if (syncChannel && sb) { sb.removeChannel(syncChannel); syncChannel = null; }
+  if (sb) await sb.auth.signOut();
+  syncUser = null;
+  renderSyncUI();
+  setSyncStatus("Signed out.", "");
+}
+
+// Hook invoked by store.set on every local change.
+window.__ORG_SYNC = {
+  onChange(key) {
+    if (syncApplying || !syncUser) return;
+    if (SYNC_KEYS.indexOf(key) === -1) return;
+    scheduleSyncPush();
+  },
+};
+
+$("#sync-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  syncSignIn($("#sync-email").value.trim(), $("#sync-pass").value);
+});
+$("#sync-signout").addEventListener("click", syncSignOut);
+
+async function initSync() {
+  if (!window.supabase) { setSyncStatus("Sync library failed to load (check your connection).", "warn"); return; }
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+    auth: { persistSession: true, autoRefreshToken: true },
+  });
+  renderSyncUI();
+  const { data } = await sb.auth.getSession();
+  if (data && data.session && data.session.user) {
+    await onSignedIn(data.session.user);
+  } else {
+    setSyncStatus("Not signed in — sign in to sync across your devices.", "");
+  }
+}
+
+// ============================================================
 //  Init
 // ============================================================
 if (!raids.length) {
@@ -1056,6 +1222,7 @@ initAiConfigUI();
 renderAiSuggestions();
 renderAiChat();
 updateBadges();
+initSync();
 refreshNotifNotice();
 
 checkReminders();
