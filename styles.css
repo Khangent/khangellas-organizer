@@ -387,6 +387,57 @@ input[type="number"] { width: 80px; }
 .tcg-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tcg-rarity { font-size: 0.66rem; color: var(--text-muted); margin-top: 2px; }
 
+/* ---------- AI Assistant ---------- */
+.ai-config {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); margin-bottom: 16px; box-shadow: var(--shadow);
+}
+.ai-config summary {
+  cursor: pointer; padding: 13px 16px; font-weight: 600;
+  display: flex; align-items: center; gap: 10px; list-style: none;
+}
+.ai-config summary::-webkit-details-marker { display: none; }
+.ai-status { font-size: 0.78rem; font-weight: 600; padding: 2px 10px; border-radius: 999px; background: var(--surface-2); color: var(--text-muted); }
+.ai-status.ok { background: rgba(34,160,107,0.16); color: var(--success); }
+.ai-status.warn { background: rgba(245,158,11,0.18); color: var(--med); }
+.ai-config-body {
+  padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 12px;
+  border-top: 1px solid var(--border);
+}
+.ai-config-body label { display: flex; flex-direction: column; gap: 5px; font-size: 0.85rem; font-weight: 500; color: var(--text-muted); }
+.ai-config-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ai-hint { font-size: 0.78rem; color: var(--text-muted); }
+
+.ai-chat {
+  min-height: 240px; max-height: 52vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 8px 2px; margin-bottom: 14px;
+}
+.ai-msg { display: flex; }
+.ai-msg.user { justify-content: flex-end; }
+.ai-bubble {
+  max-width: 78%; padding: 11px 15px; border-radius: 16px;
+  font-size: 0.92rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.ai-msg.user .ai-bubble { background: var(--primary); color: #fff; border-color: var(--primary); border-bottom-right-radius: 5px; }
+.ai-msg.assistant .ai-bubble { border-bottom-left-radius: 5px; }
+.ai-msg.error .ai-bubble { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.35); color: var(--danger); }
+
+.ai-bubble.typing { display: flex; gap: 5px; align-items: center; }
+.ai-bubble.typing .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); animation: blink 1.2s infinite both; }
+.ai-bubble.typing .dot:nth-child(2) { animation-delay: 0.2s; }
+.ai-bubble.typing .dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+
+.ai-suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.ai-chip {
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
+  font: inherit; font-size: 0.82rem; padding: 7px 13px; border-radius: 999px; cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.ai-chip:hover { background: var(--surface-2); color: var(--text); border-color: var(--primary); }
+
 @media (max-width: 720px) {
   .app { flex-direction: column; }
   .sidebar { width: 100%; height: auto; position: relative; flex-direction: column; }

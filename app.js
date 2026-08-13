@@ -704,6 +704,201 @@ $("#tcg-missing-only").addEventListener("change", (e) => {
 });
 
 // ============================================================
+//  AI Assistant (LiteLLM proxy — aikeys.maibornwolff.de, OpenAI-compatible)
+// ============================================================
+const AI_MODELS = [
+  "claude-sonnet-4.5", "claude-opus-4.5", "claude-haiku-4.5", "claude-sonnet-4",
+  "gpt-5.1", "gpt-4.1", "gpt-4o", "gemini-2.5-flash",
+];
+const AI_DEFAULTS = { key: "", model: "claude-sonnet-4.5", base: "https://aikeys.maibornwolff.de" };
+
+let aiCfg = { ...AI_DEFAULTS, ...store.get("org.ai", {}) };
+let aiChat = store.get("org.aichat", []); // [{role:'user'|'assistant'|'error', content}]
+let aiBusy = false;
+
+save.ai = () => store.set("org.ai", aiCfg);
+save.aichat = () => store.set("org.aichat", aiChat.filter((m) => m.role !== "error"));
+
+function setAiStatus(text, kind = "") {
+  const s = $("#ai-status");
+  s.textContent = text;
+  s.className = "ai-status " + kind;
+}
+
+// Build a compact snapshot of the user's data so the assistant has context.
+function appContextSummary() {
+  const lines = [];
+  const openT = todos.filter((t) => !t.done);
+  lines.push(
+    `To-dos: ${openT.length} open` +
+      (openT.length ? ` — ${openT.slice(0, 6).map((t) => t.text).join("; ")}` : "")
+  );
+  const openS = shopping.filter((s) => !s.done);
+  lines.push(
+    `Shopping: ${openS.length} to buy` +
+      (openS.length ? ` — ${openS.slice(0, 10).map((s) => s.name + (s.qty > 1 ? ` x${s.qty}` : "")).join(", ")}` : "")
+  );
+  raids.forEach((p) => {
+    const st = raidStats(p.characters);
+    lines.push(`Lost Ark raids — ${p.name}: ${st.done}/${st.total} cleared (${p.characters.length} characters)`);
+  });
+  const owned = TCG_ALL.filter((c) => tcgOwned[c.id]).length;
+  lines.push(`Pokémon TCG: ${owned}/${TCG_ALL.length} Espeon & Umbreon cards collected`);
+  return lines.join("\n");
+}
+
+function aiSystemPrompt() {
+  return (
+    `You are the built-in assistant inside "Khangella's Organizer", a personal web app with these sections: ` +
+    `To-dos, Shopping list, Calendar, Reminders, a Lost Ark Raid Organizer, and a Pokémon TCG Collector for Espeon & Umbreon cards. ` +
+    `Be concise, friendly, and practical. Here is a snapshot of the user's current data:\n\n${appContextSummary()}\n\n` +
+    `Use this data when it's relevant. You can't directly edit the app yet, so when the user wants to add or change items, briefly tell them which section to use.`
+  );
+}
+
+async function aiComplete(messages) {
+  const url = aiCfg.base.replace(/\/+$/, "") + "/v1/chat/completions";
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + aiCfg.key,
+      },
+      body: JSON.stringify({
+        model: aiCfg.model,
+        messages,
+        temperature: 0.7,
+        max_tokens: 1024,
+      }),
+    });
+  } catch (e) {
+    // Network/CORS failures surface here as a TypeError.
+    throw new Error(
+      "Could not reach the AI endpoint. This is usually a network or CORS issue (the proxy may not allow browser requests from this site), or the endpoint URL is wrong."
+    );
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    if (res.status === 401 || res.status === 403)
+      throw new Error(`Authentication failed (${res.status}). Check that your API key is correct and active.`);
+    throw new Error(`Request failed (${res.status}). ${body.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content ?? "(the model returned an empty response)";
+}
+
+function renderAiChat() {
+  const box = $("#ai-chat");
+  box.innerHTML = "";
+  if (!aiChat.length && !aiBusy) {
+    box.append(
+      el("div", { class: "empty", text: "👋 Ask me about your day, your raids, or your card collection." })
+    );
+  }
+  aiChat.forEach((m) => {
+    box.append(
+      el("div", { class: `ai-msg ${m.role}` }, [el("div", { class: "ai-bubble", text: m.content })])
+    );
+  });
+  if (aiBusy) {
+    box.append(
+      el("div", { class: "ai-msg assistant" }, [
+        el("div", { class: "ai-bubble typing" }, [
+          el("span", { class: "dot" }), el("span", { class: "dot" }), el("span", { class: "dot" }),
+        ]),
+      ])
+    );
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+async function sendAi(text) {
+  text = text.trim();
+  if (!text || aiBusy) return;
+  if (!aiCfg.key) {
+    $("#ai-config").open = true;
+    setAiStatus("Add your API key to start.", "warn");
+    return;
+  }
+  aiChat.push({ role: "user", content: text });
+  save.aichat();
+  aiBusy = true;
+  $("#ai-send").disabled = true;
+  renderAiChat();
+
+  try {
+    const messages = [
+      { role: "system", content: aiSystemPrompt() },
+      ...aiChat.filter((m) => m.role === "user" || m.role === "assistant").map((m) => ({ role: m.role, content: m.content })),
+    ];
+    const reply = await aiComplete(messages);
+    aiChat.push({ role: "assistant", content: reply });
+    save.aichat();
+  } catch (err) {
+    aiChat.push({ role: "error", content: "⚠️ " + err.message });
+  } finally {
+    aiBusy = false;
+    $("#ai-send").disabled = false;
+    renderAiChat();
+  }
+}
+
+const AI_SUGGESTIONS = [
+  "What should I focus on today?",
+  "Which Lost Ark raids are left this week?",
+  "How many Espeon & Umbreon cards do I still need?",
+  "Turn my shopping list into a meal idea",
+];
+
+function renderAiSuggestions() {
+  const wrap = $("#ai-suggestions");
+  wrap.innerHTML = "";
+  AI_SUGGESTIONS.forEach((s) => {
+    wrap.append(
+      el("button", { class: "ai-chip", type: "button", text: s, onclick: () => sendAi(s) })
+    );
+  });
+}
+
+function initAiConfigUI() {
+  const sel = $("#ai-model");
+  sel.innerHTML = "";
+  // Ensure the saved model is present even if not in the default list.
+  const models = AI_MODELS.includes(aiCfg.model) ? AI_MODELS : [aiCfg.model, ...AI_MODELS];
+  models.forEach((m) => sel.append(el("option", { value: m, text: m })));
+  sel.value = aiCfg.model;
+  $("#ai-key").value = aiCfg.key;
+  $("#ai-base").value = aiCfg.base;
+  setAiStatus(aiCfg.key ? "Ready" : "No API key set", aiCfg.key ? "ok" : "warn");
+  if (!aiCfg.key) $("#ai-config").open = true;
+}
+
+$("#ai-save").addEventListener("click", () => {
+  aiCfg.key = $("#ai-key").value.trim();
+  aiCfg.model = $("#ai-model").value;
+  aiCfg.base = ($("#ai-base").value.trim() || AI_DEFAULTS.base);
+  save.ai();
+  setAiStatus(aiCfg.key ? "Saved ✓ — Ready" : "Saved — but no key set", aiCfg.key ? "ok" : "warn");
+  if (aiCfg.key) $("#ai-config").open = false;
+});
+
+$("#ai-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const input = $("#ai-input");
+  const text = input.value;
+  input.value = "";
+  sendAi(text);
+});
+
+$("#ai-clear").addEventListener("click", () => {
+  aiChat = [];
+  save.aichat();
+  renderAiChat();
+});
+
+// ============================================================
 //  Init
 // ============================================================
 if (!raids.length) {
@@ -716,6 +911,9 @@ renderCalendar();
 renderReminders();
 renderRaids();
 renderTCG();
+initAiConfigUI();
+renderAiSuggestions();
+renderAiChat();
 updateBadges();
 refreshNotifNotice();
 

@@ -38,6 +38,9 @@
           <span class="icon">🃏</span><span>TCG Collector</span>
           <span class="badge" id="badge-tcg"></span>
         </button>
+        <button class="menu-item" data-view="ai">
+          <span class="icon">✨</span><span>AI Assistant</span>
+        </button>
       </nav>
       <div class="sidebar-footer">
         <button id="theme-toggle" class="theme-toggle">
@@ -151,6 +154,39 @@
         </div>
         <div class="tcg-progress" id="tcg-progress"></div>
         <div class="tcg-grid" id="tcg-grid"></div>
+      </section>
+
+      <!-- AI Assistant view -->
+      <section class="view" id="view-ai">
+        <header class="view-header">
+          <h2>AI Assistant</h2>
+          <p class="view-sub">Ask about your to-dos, raids, shopping, or card collection — powered by Claude.</p>
+        </header>
+        <details class="ai-config" id="ai-config">
+          <summary>⚙️ AI settings <span class="ai-status" id="ai-status"></span></summary>
+          <div class="ai-config-body">
+            <label>API key
+              <input type="password" id="ai-key" placeholder="sk-…" autocomplete="off" />
+            </label>
+            <label>Model
+              <select id="ai-model"></select>
+            </label>
+            <label>Endpoint (advanced)
+              <input type="text" id="ai-base" />
+            </label>
+            <div class="ai-config-actions">
+              <button class="btn-primary" id="ai-save">Save settings</button>
+              <span class="ai-hint">🔒 Your key is stored only in this browser and is never uploaded or committed to GitHub.</span>
+            </div>
+          </div>
+        </details>
+        <div class="ai-chat" id="ai-chat"></div>
+        <div class="ai-suggestions" id="ai-suggestions"></div>
+        <form class="input-row" id="ai-form">
+          <input type="text" id="ai-input" placeholder="Ask me anything…" autocomplete="off" required />
+          <button type="submit" class="btn-primary" id="ai-send">Send</button>
+          <button type="button" class="btn-ghost" id="ai-clear">Clear</button>
+        </form>
       </section>
     </main>
   </div>
