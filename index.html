@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Khangella's Organizer</title>
-  <link rel="stylesheet" href="styles.css?v=18" />
+  <link rel="stylesheet" href="styles.css?v=19" />
 </head>
 <body>
   <div class="app">
@@ -40,6 +40,10 @@
         <button class="menu-item" data-view="tcg">
           <span class="icon">🃏</span><span>TCG Collector</span>
           <span class="badge" id="badge-tcg"></span>
+        </button>
+        <button class="menu-item" data-view="games">
+          <span class="icon">🎮</span><span>Games</span>
+          <span class="badge" id="badge-games"></span>
         </button>
         <button class="menu-item" data-view="ai">
           <span class="icon">✨</span><span>AI Assistant</span>
@@ -161,6 +165,26 @@
         </div>
         <div class="tcg-progress" id="tcg-progress"></div>
         <div class="tcg-grid" id="tcg-grid"></div>
+      </section>
+
+      <!-- Games view -->
+      <section class="view" id="view-games">
+        <header class="view-header">
+          <h2>Games to Play</h2>
+          <p class="view-sub">Your shared backlog of games to try. Add one, then cycle its status as you go.</p>
+        </header>
+        <form class="input-row" id="game-form">
+          <input type="text" id="game-name" placeholder="Game title…" autocomplete="off" required />
+          <input type="text" id="game-platform" placeholder="Platform (optional)" autocomplete="off" />
+          <button type="submit" class="btn-primary">Add</button>
+        </form>
+        <div class="game-tabs" id="game-tabs">
+          <button class="game-tab active" data-status="all">All</button>
+          <button class="game-tab" data-status="want">Want to play</button>
+          <button class="game-tab" data-status="playing">Playing</button>
+          <button class="game-tab" data-status="played">Played</button>
+        </div>
+        <div class="list" id="game-list"></div>
       </section>
 
       <!-- Recipes view -->
@@ -291,7 +315,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="tcg-data.js?v=18"></script>
-  <script src="app.js?v=18"></script>
+  <script src="tcg-data.js?v=19"></script>
+  <script src="app.js?v=19"></script>
 </body>
 </html>

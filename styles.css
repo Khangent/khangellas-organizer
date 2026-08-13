@@ -576,6 +576,30 @@ input[type="number"] { width: 80px; }
 .sync-form .btn-primary { align-self: flex-start; }
 .sync-who { margin-bottom: 14px; font-size: 0.92rem; }
 
+/* ---------- Games to Play ---------- */
+.game-tabs {
+  display: inline-flex; gap: 4px; background: var(--surface-2);
+  padding: 4px; border-radius: 10px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.game-tab {
+  border: none; background: transparent; color: var(--text-muted);
+  font: inherit; font-weight: 600; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.game-tab:hover { color: var(--text); }
+.game-tab.active { background: var(--primary); color: #fff; }
+
+.game-status {
+  border: none; cursor: pointer; font: inherit; font-weight: 700; font-size: 0.72rem;
+  padding: 7px 13px; border-radius: 999px; white-space: nowrap; flex-shrink: 0;
+  transition: filter 0.15s;
+}
+.game-status:hover { filter: brightness(0.95); }
+.game-status.want { background: rgba(236,72,153,0.15); color: var(--primary); }
+.game-status.playing { background: rgba(245,158,11,0.18); color: var(--med); }
+.game-status.played { background: rgba(34,160,107,0.16); color: var(--accent); }
+.card.played .card-title { color: var(--text-muted); }
+
 /* ---------- Recipe Extractor ---------- */
 .rex-panel { display: flex; flex-direction: column; gap: 12px; margin-bottom: 22px; max-width: 720px; }
 .linkbtn {

@@ -35,6 +35,7 @@ let calLegend = store.get("org.callegend", {}); // color(hex) -> person name
 let reminders = store.get("org.reminders", []);
 let raids = store.get("org.raids", []);
 let recipes = store.get("org.recipes", []);
+let games = store.get("org.games", []);
 
 const save = {
   todos: () => store.set("org.todos", todos),
@@ -43,6 +44,7 @@ const save = {
   reminders: () => store.set("org.reminders", reminders),
   raids: () => store.set("org.raids", raids),
   recipes: () => store.set("org.recipes", recipes),
+  games: () => store.set("org.games", games),
   callegend: () => store.set("org.callegend", calLegend),
 };
 
@@ -120,6 +122,7 @@ function updateBadges() {
   const rs = raidStats(allCharacters());
   setBadge("raids", rs.total - rs.done);
   setBadge("tcg", TCG_ALL.filter((c) => !tcgOwned[c.id]).length);
+  setBadge("games", games.filter((g) => g.status === "want").length);
 }
 
 // ============================================================
@@ -1141,7 +1144,7 @@ const SUPABASE_URL = "https://audcuqjwpdqeyxvjyrin.supabase.co";
 const SUPABASE_ANON =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1ZGN1cWp3cGRxZXl4dmp5cmluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY2MjA5MDgsImV4cCI6MjEwMjE5NjkwOH0.ppvvaI5queLd-Z8uKEn-OHZQ4YxiYZvMl9vnOFaObRo";
 // Everything syncs EXCEPT the AI key/chat (org.ai, org.aichat stay device-local).
-const SYNC_KEYS = ["org.todos", "org.shopping", "org.events", "org.reminders", "org.raids", "org.tcg", "org.recipes", "org.callegend", "org.theme"];
+const SYNC_KEYS = ["org.todos", "org.shopping", "org.events", "org.reminders", "org.raids", "org.tcg", "org.recipes", "org.games", "org.callegend", "org.theme"];
 const syncClientId = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 let sb = null;
@@ -1191,10 +1194,11 @@ function applyRemoteState(data) {
     raids = store.get("org.raids", []);
     tcgOwned = store.get("org.tcg", {});
     recipes = store.get("org.recipes", []);
+    games = store.get("org.games", []);
     calLegend = store.get("org.callegend", {});
     if (data["org.theme"]) applyTheme(data["org.theme"]);
     renderTodos(); renderShopping(); renderCalLegend(); renderCalendar(); renderReminders();
-    renderRaids(); renderTCG(); renderRecipes(); updateBadges();
+    renderRaids(); renderTCG(); renderRecipes(); renderGames(); updateBadges();
   } finally {
     syncApplying = false;
   }
@@ -1750,6 +1754,78 @@ function initRecipes() {
 }
 
 // ============================================================
+//  Games to Play (shared backlog)
+// ============================================================
+const GAME_STATUS = {
+  want: { label: "Want to play", next: "playing", cls: "want" },
+  playing: { label: "Playing", next: "played", cls: "playing" },
+  played: { label: "Played", next: "want", cls: "played" },
+};
+const GAME_ORDER = { want: 0, playing: 1, played: 2 };
+let gameFilter = "all";
+
+function renderGames() {
+  const list = $("#game-list");
+  if (!list) return;
+  $$("#game-tabs .game-tab").forEach((b) => b.classList.toggle("active", b.dataset.status === gameFilter));
+  list.innerHTML = "";
+
+  if (!games.length) {
+    list.append(el("div", { class: "empty", text: "No games yet. Add one you want to try! 🎮" }));
+    return;
+  }
+
+  let items = [...games].sort((a, b) => GAME_ORDER[a.status] - GAME_ORDER[b.status]);
+  if (gameFilter !== "all") items = items.filter((g) => g.status === gameFilter);
+  if (!items.length) {
+    list.append(el("div", { class: "empty", text: "No games in this category." }));
+    return;
+  }
+
+  items.forEach((g) => {
+    const st = GAME_STATUS[g.status] || GAME_STATUS.want;
+    const body = [el("div", { class: "card-title", text: g.name })];
+    if (g.platform) {
+      body.push(el("div", { class: "card-meta" }, [el("span", { class: "tag", text: g.platform })]));
+    }
+    list.append(
+      el("div", { class: `card ${g.status === "played" ? "played" : ""}` }, [
+        el("button", {
+          class: `game-status ${st.cls}`, title: "Click to change status", text: st.label,
+          onclick: () => { g.status = st.next; save.games(); renderGames(); updateBadges(); },
+        }),
+        el("div", { class: "card-body" }, body),
+        el("button", {
+          class: "icon-btn", title: "Delete", text: "🗑",
+          onclick: () => { games = games.filter((x) => x.id !== g.id); save.games(); renderGames(); updateBadges(); },
+        }),
+      ])
+    );
+  });
+}
+
+$("#game-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const name = $("#game-name").value.trim();
+  if (!name) return;
+  games.push({
+    id: uid(),
+    name,
+    platform: $("#game-platform").value.trim(),
+    status: "want",
+    createdAt: new Date().toISOString(),
+  });
+  save.games();
+  e.target.reset();
+  renderGames();
+  updateBadges();
+});
+
+$$("#game-tabs .game-tab").forEach((b) =>
+  b.addEventListener("click", () => { gameFilter = b.dataset.status; renderGames(); })
+);
+
+// ============================================================
 //  Init
 // ============================================================
 if (!raids.length) {
@@ -1764,6 +1840,7 @@ renderReminders();
 renderRaids();
 renderTCG();
 renderRecipes();
+renderGames();
 initAiConfigUI();
 renderAiSuggestions();
 renderAiChat();
