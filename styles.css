@@ -273,10 +273,10 @@ input[type="number"] { width: 80px; }
   transition: width 0.3s ease;
 }
 
-/* Players sit side by side and stack only when space runs out */
+/* Players sit side by side only when each has real room; otherwise stack full-width */
 .raid-people {
   display: grid; gap: 26px; align-items: start;
-  grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
 }
 
 .person-card {
@@ -402,23 +402,23 @@ input[type="number"] { width: 80px; }
 .raid-tr.grp-end td { border-bottom: 2px solid var(--border); }
 
 .cell-char {
-  vertical-align: top; width: 44%; background: var(--surface);
+  vertical-align: top; width: 190px; background: var(--surface);
   border-right: 1px solid var(--border); padding: 14px 12px !important;
 }
 .cell-char.complete { box-shadow: inset 3px 0 0 var(--success); }
-.cell-raid { font-weight: 600; }
-.cell-raid .raid-name { width: 100%; font-weight: 600; font-size: 0.92rem; padding: 7px 9px; }
+.cell-raid { font-weight: 600; }        /* no fixed width — takes all remaining space */
+.cell-raid .raid-name { width: 100%; font-weight: 600; font-size: 0.92rem; padding: 8px 10px; }
 .cell-raid.muted { color: var(--text-muted); font-style: italic; font-weight: 500; }
 .raid-tr.done .cell-raid .raid-name { text-decoration: line-through; opacity: 0.7; }
-.cell-check { width: 48px; text-align: center; }
-.cell-check .check { margin: 0 auto; width: 24px; height: 24px; }
-.cell-gold { width: 116px; text-align: right; }
-.gold-input { width: 104px; text-align: right; padding: 8px 10px; font-size: 0.9rem; }
-.cell-act { width: 36px; text-align: center; }
+.cell-check { width: 42px; text-align: center; }
+.cell-check .check { margin: 0 auto; width: 22px; height: 22px; }
+.cell-gold { width: 96px; text-align: right; }
+.gold-input { width: 84px; text-align: right; padding: 8px 9px; font-size: 0.88rem; }
+.cell-act { width: 34px; text-align: center; }
 
 .char-mini { display: flex; gap: 12px; align-items: flex-start; }
 .char-mini-avatar {
-  position: relative; width: 58px; height: 58px; flex-shrink: 0;
+  position: relative; width: 50px; height: 50px; flex-shrink: 0;
   border-radius: 12px; overflow: hidden; cursor: pointer;
   background: linear-gradient(135deg, var(--primary), var(--accent));
   display: grid; place-items: center;
