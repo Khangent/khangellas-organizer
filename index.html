@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Khangella's Organizer</title>
-  <link rel="stylesheet" href="styles.css?v=17" />
+  <link rel="stylesheet" href="styles.css?v=18" />
 </head>
 <body>
   <div class="app">
@@ -105,6 +105,7 @@
           <button class="btn-ghost" id="cal-next">›</button>
           <button class="btn-ghost" id="cal-today">Today</button>
         </div>
+        <div class="cal-legend" id="cal-legend"></div>
         <div class="cal-weekdays">
           <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
         </div>
@@ -254,6 +255,20 @@
     </main>
   </div>
 
+  <!-- Add-event modal -->
+  <div class="modal-overlay" id="cal-modal" hidden>
+    <div class="modal">
+      <h3 id="cal-modal-title">Add event</h3>
+      <input type="text" id="cal-ev-title" placeholder="Event title" autocomplete="off" />
+      <div class="cal-modal-sub">Colour (who):</div>
+      <div class="cal-swatches" id="cal-ev-colors"></div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="cal-ev-cancel">Cancel</button>
+        <button class="btn-primary" id="cal-ev-add">Add event</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Floating cross-device chat -->
   <div class="chatw" id="chatw">
     <div class="chatw-panel" id="chatw-panel" hidden>
@@ -276,7 +291,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="tcg-data.js?v=17"></script>
-  <script src="app.js?v=17"></script>
+  <script src="tcg-data.js?v=18"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>

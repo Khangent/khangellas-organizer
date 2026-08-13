@@ -31,6 +31,7 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 let todos = store.get("org.todos", []);
 let shopping = store.get("org.shopping", []);
 let events = store.get("org.events", []);
+let calLegend = store.get("org.callegend", {}); // color(hex) -> person name
 let reminders = store.get("org.reminders", []);
 let raids = store.get("org.raids", []);
 let recipes = store.get("org.recipes", []);
@@ -42,6 +43,7 @@ const save = {
   reminders: () => store.set("org.reminders", reminders),
   raids: () => store.set("org.raids", raids),
   recipes: () => store.set("org.recipes", recipes),
+  callegend: () => store.set("org.callegend", calLegend),
 };
 
 // ---------- Small DOM helpers ----------
@@ -287,8 +289,16 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+// Palette used to colour events by person
+const CAL_COLORS = ["#f6a5c0", "#a5d6a7", "#90caf9", "#ffcc80", "#ce93d8", "#fff59d"];
+const DEFAULT_CAL_COLOR = "#90caf9";
+let calSelColor = CAL_COLORS[0];
+let calModalDate = null;
+
 function itemsForDate(iso) {
-  const evts = events.filter((e) => e.date === iso).map((e) => ({ type: "event", title: e.title }));
+  const evts = events
+    .filter((e) => e.date === iso)
+    .map((e) => ({ type: "event", id: e.id, title: e.title, color: e.color || DEFAULT_CAL_COLOR }));
   const dueTodos = todos
     .filter((t) => t.due === iso && !t.done)
     .map((t) => ({ type: "todo", title: t.text }));
@@ -322,22 +332,103 @@ function renderCalendar() {
     ]);
     itemsForDate(iso)
       .slice(0, 3)
-      .forEach((it) =>
-        cell.append(el("div", { class: `cal-event ${it.type}`, text: it.title }))
-      );
-    cell.addEventListener("click", () => promptEvent(iso));
+      .forEach((it) => {
+        if (it.type === "event") {
+          const who = calLegend[it.color];
+          const pill = el("div", {
+            class: "cal-event",
+            style: `background:${it.color};color:#22252b`,
+            title: (who ? who + " · " : "") + it.title + "  (click to delete)",
+            text: it.title,
+          });
+          pill.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (confirm(`Delete event “${it.title}”?`)) {
+              events = events.filter((x) => x.id !== it.id);
+              save.events();
+              renderCalendar();
+            }
+          });
+          cell.append(pill);
+        } else {
+          cell.append(el("div", { class: "cal-event todo", text: it.title, title: it.title }));
+        }
+      });
+    cell.addEventListener("click", () => openEventModal(iso));
     grid.append(cell);
   }
 }
 
-function promptEvent(iso) {
-  const title = prompt(`Add an event on ${fmtDate(iso)}:`);
-  if (title && title.trim()) {
-    events.push({ id: uid(), date: iso, title: title.trim() });
-    save.events();
-    renderCalendar();
-  }
+// ----- Add-event modal (title + colour picker) -----
+function renderModalColors() {
+  const wrap = $("#cal-ev-colors");
+  wrap.innerHTML = "";
+  CAL_COLORS.forEach((c) => {
+    const name = calLegend[c];
+    wrap.append(
+      el("button", {
+        type: "button",
+        class: `cal-swatch ${c === calSelColor ? "sel" : ""}`,
+        style: `background:${c}`,
+        title: name || "Unnamed colour",
+        onclick: () => { calSelColor = c; renderModalColors(); },
+      }, name ? [el("span", { class: "cal-swatch-name", text: name })] : [])
+    );
+  });
 }
+function openEventModal(iso) {
+  calModalDate = iso;
+  $("#cal-modal-title").textContent = "Add event · " + fmtDate(iso);
+  $("#cal-ev-title").value = "";
+  renderModalColors();
+  $("#cal-modal").hidden = false;
+  setTimeout(() => $("#cal-ev-title").focus(), 0);
+}
+function closeEventModal() {
+  $("#cal-modal").hidden = true;
+  calModalDate = null;
+}
+function addEventFromModal() {
+  const title = $("#cal-ev-title").value.trim();
+  if (!title) { $("#cal-ev-title").focus(); return; }
+  events.push({ id: uid(), date: calModalDate, title, color: calSelColor });
+  save.events();
+  closeEventModal();
+  renderCalendar();
+}
+
+// ----- Legend: name each colour (who's who) -----
+function renderCalLegend() {
+  const wrap = $("#cal-legend");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  wrap.append(el("span", { class: "cal-legend-label", text: "Who:" }));
+  CAL_COLORS.forEach((c) => {
+    wrap.append(
+      el("label", { class: "cal-legend-item" }, [
+        el("span", { class: "cal-legend-dot", style: `background:${c}` }),
+        el("input", {
+          class: "cal-legend-input", value: calLegend[c] || "", placeholder: "name", maxlength: "16",
+          onchange: (e) => {
+            const v = e.target.value.trim();
+            if (v) calLegend[c] = v; else delete calLegend[c];
+            save.callegend();
+            renderCalendar();
+          },
+        }),
+      ])
+    );
+  });
+}
+
+$("#cal-ev-add").addEventListener("click", addEventFromModal);
+$("#cal-ev-cancel").addEventListener("click", closeEventModal);
+$("#cal-ev-title").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); addEventFromModal(); }
+});
+$("#cal-modal").addEventListener("click", (e) => {
+  if (e.target.id === "cal-modal") closeEventModal();
+});
 
 $("#cal-prev").addEventListener("click", () => {
   calMonth--;
@@ -1050,7 +1141,7 @@ const SUPABASE_URL = "https://audcuqjwpdqeyxvjyrin.supabase.co";
 const SUPABASE_ANON =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1ZGN1cWp3cGRxZXl4dmp5cmluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY2MjA5MDgsImV4cCI6MjEwMjE5NjkwOH0.ppvvaI5queLd-Z8uKEn-OHZQ4YxiYZvMl9vnOFaObRo";
 // Everything syncs EXCEPT the AI key/chat (org.ai, org.aichat stay device-local).
-const SYNC_KEYS = ["org.todos", "org.shopping", "org.events", "org.reminders", "org.raids", "org.tcg", "org.recipes", "org.theme"];
+const SYNC_KEYS = ["org.todos", "org.shopping", "org.events", "org.reminders", "org.raids", "org.tcg", "org.recipes", "org.callegend", "org.theme"];
 const syncClientId = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 let sb = null;
@@ -1100,8 +1191,9 @@ function applyRemoteState(data) {
     raids = store.get("org.raids", []);
     tcgOwned = store.get("org.tcg", {});
     recipes = store.get("org.recipes", []);
+    calLegend = store.get("org.callegend", {});
     if (data["org.theme"]) applyTheme(data["org.theme"]);
-    renderTodos(); renderShopping(); renderCalendar(); renderReminders();
+    renderTodos(); renderShopping(); renderCalLegend(); renderCalendar(); renderReminders();
     renderRaids(); renderTCG(); renderRecipes(); updateBadges();
   } finally {
     syncApplying = false;
@@ -1666,6 +1758,7 @@ if (!raids.length) {
 }
 renderTodos();
 renderShopping();
+renderCalLegend();
 renderCalendar();
 renderReminders();
 renderRaids();

@@ -240,6 +240,13 @@ input[type="number"] { width: 80px; }
   text-align: center; font-size: 0.72rem; font-weight: 600;
   color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;
 }
+/* Calendar legend (who = which colour) */
+.cal-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 14px; }
+.cal-legend-label { font-size: 0.8rem; font-weight: 700; color: var(--text-muted); }
+.cal-legend-item { display: flex; align-items: center; gap: 6px; }
+.cal-legend-dot { width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.1); }
+.cal-legend-input { width: 90px; font-size: 0.8rem; padding: 5px 8px; }
+
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .cal-cell {
   background: var(--surface);
@@ -621,6 +628,32 @@ input[type="number"] { width: 80px; }
 .rex-card-body li { font-size: 0.9rem; line-height: 1.4; }
 .rex-notes { font-size: 0.85rem; color: var(--text-muted); margin-top: 12px; font-style: italic; }
 .rex-srclink { display: inline-block; margin-top: 12px; font-size: 0.82rem; color: var(--primary); font-weight: 600; }
+
+/* ---------- Reusable modal + calendar colour picker ---------- */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 1100; padding: 20px;
+  background: rgba(15,18,28,0.55);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal {
+  width: 380px; max-width: 100%;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; box-shadow: var(--shadow); padding: 20px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.modal h3 { font-size: 1.1rem; }
+.modal input[type="text"] { width: 100%; font: inherit; }
+.cal-modal-sub { font-size: 0.8rem; font-weight: 600; color: var(--text-muted); }
+.cal-swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.cal-swatch {
+  position: relative; height: 34px; min-width: 34px; padding: 0 9px;
+  border-radius: 8px; border: 2px solid transparent; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.cal-swatch.sel { border-color: var(--text); }
+.cal-swatch-name { font-size: 0.72rem; font-weight: 700; color: #22252b; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+.cal-event { cursor: pointer; }
 
 /* ---------- Floating cross-device chat ---------- */
 .chatw {
