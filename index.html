@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Khangella's Organizer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <h1>Khangella's Organizer</h1>
+      </div>
+      <nav class="menu">
+        <button class="menu-item active" data-view="todos">
+          <span class="icon">✓</span><span>To-dos</span>
+          <span class="badge" id="badge-todos"></span>
+        </button>
+        <button class="menu-item" data-view="shopping">
+          <span class="icon">🛒</span><span>Shopping</span>
+          <span class="badge" id="badge-shopping"></span>
+        </button>
+        <button class="menu-item" data-view="calendar">
+          <span class="icon">📅</span><span>Calendar</span>
+        </button>
+        <button class="menu-item" data-view="reminders">
+          <span class="icon">⏰</span><span>Reminders</span>
+          <span class="badge" id="badge-reminders"></span>
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <button id="theme-toggle" class="theme-toggle">
+          <span class="icon">🌙</span><span class="theme-label">Dark mode</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="content">
+      <!-- To-dos view -->
+      <section class="view active" id="view-todos">
+        <header class="view-header">
+          <h2>To-dos</h2>
+          <p class="view-sub">Track tasks with due dates and priorities.</p>
+        </header>
+        <form class="input-row" id="todo-form">
+          <input type="text" id="todo-text" placeholder="What needs doing?" autocomplete="off" required />
+          <input type="date" id="todo-due" title="Due date" />
+          <select id="todo-priority" title="Priority">
+            <option value="high">High</option>
+            <option value="med" selected>Medium</option>
+            <option value="low">Low</option>
+          </select>
+          <button type="submit" class="btn-primary">Add</button>
+        </form>
+        <div class="list" id="todo-list"></div>
+      </section>
+
+      <!-- Shopping view -->
+      <section class="view" id="view-shopping">
+        <header class="view-header">
+          <h2>Shopping list</h2>
+          <p class="view-sub">Add items with quantities and check them off.</p>
+        </header>
+        <form class="input-row" id="shopping-form">
+          <input type="text" id="shopping-name" placeholder="Add an item…" autocomplete="off" required />
+          <input type="number" id="shopping-qty" min="1" value="1" title="Quantity" />
+          <button type="submit" class="btn-primary">Add</button>
+        </form>
+        <div class="list" id="shopping-list"></div>
+        <div class="list-actions">
+          <button class="btn-ghost" id="shopping-clear-done">Clear checked</button>
+        </div>
+      </section>
+
+      <!-- Calendar view -->
+      <section class="view" id="view-calendar">
+        <header class="view-header">
+          <h2>Calendar</h2>
+          <p class="view-sub">Click a day to add an event. To-dos with due dates appear too.</p>
+        </header>
+        <div class="cal-toolbar">
+          <button class="btn-ghost" id="cal-prev">‹</button>
+          <h3 id="cal-title"></h3>
+          <button class="btn-ghost" id="cal-next">›</button>
+          <button class="btn-ghost" id="cal-today">Today</button>
+        </div>
+        <div class="cal-weekdays">
+          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+      </section>
+
+      <!-- Reminders view -->
+      <section class="view" id="view-reminders">
+        <header class="view-header">
+          <h2>Reminders</h2>
+          <p class="view-sub">Get a desktop notification when a reminder is due.</p>
+        </header>
+        <div class="notice" id="notif-notice" hidden>
+          <span>Enable desktop notifications to get alerted when reminders are due.</span>
+          <button class="btn-primary" id="enable-notif">Enable</button>
+        </div>
+        <form class="input-row" id="reminder-form">
+          <input type="text" id="reminder-text" placeholder="Remind me to…" autocomplete="off" required />
+          <input type="datetime-local" id="reminder-when" required />
+          <button type="submit" class="btn-primary">Add</button>
+        </form>
+        <div class="list" id="reminder-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
