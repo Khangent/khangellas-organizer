@@ -273,10 +273,10 @@ input[type="number"] { width: 80px; }
   transition: width 0.3s ease;
 }
 
-/* Players sit side by side only when each has real room; otherwise stack full-width */
+/* Players always side by side: two equal columns (extra players wrap to new rows) */
 .raid-people {
   display: grid; gap: 26px; align-items: start;
-  grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .person-card {
@@ -556,4 +556,5 @@ input[type="number"] { width: 80px; }
   .menu-item span:nth-child(2) { display: none; }
   .content { padding: 22px 18px; }
   .cal-cell { min-height: 64px; }
+  .raid-people { grid-template-columns: 1fr; }
 }
