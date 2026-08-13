@@ -758,8 +758,11 @@ function aiSystemPrompt() {
 
 async function aiComplete(messages) {
   const url = aiCfg.base.replace(/\/+$/, "") + "/v1/chat/completions";
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 45000);
   let res;
   try {
+    console.log("[AI] POST", url, "model:", aiCfg.model);
     res = await fetch(url, {
       method: "POST",
       headers: {
@@ -772,12 +775,18 @@ async function aiComplete(messages) {
         temperature: 0.7,
         max_tokens: 1024,
       }),
+      signal: ctrl.signal,
     });
   } catch (e) {
-    // Network/CORS failures surface here as a TypeError.
+    console.error("[AI] fetch failed:", e);
+    if (e.name === "AbortError")
+      throw new Error("The request timed out after 45s. The endpoint may be unreachable from the browser.");
+    // Network/CORS failures surface here as a TypeError ("Failed to fetch").
     throw new Error(
-      "Could not reach the AI endpoint. This is usually a network or CORS issue (the proxy may not allow browser requests from this site), or the endpoint URL is wrong."
+      "Could not reach the AI endpoint (\"" + e.message + "\"). This is usually a CORS block (the proxy may not allow browser requests from this site) or a wrong endpoint URL. Open DevTools → Console/Network for details."
     );
+  } finally {
+    clearTimeout(timer);
   }
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -837,6 +846,7 @@ async function sendAi(text) {
     aiChat.push({ role: "assistant", content: reply });
     save.aichat();
   } catch (err) {
+    console.error("[AI] error:", err);
     aiChat.push({ role: "error", content: "⚠️ " + err.message });
   } finally {
     aiBusy = false;
