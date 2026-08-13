@@ -1158,6 +1158,10 @@ async function onSignedIn(user) {
   setSyncStatus("Connecting…", "");
   await pullState();
   subscribeRealtime();
+  // Chat rides on the same signed-in Supabase session
+  updateChatAuth();
+  await loadChat();
+  subscribeChat();
 }
 
 async function syncSignIn(email, password) {
@@ -1170,10 +1174,13 @@ async function syncSignIn(email, password) {
 
 async function syncSignOut() {
   if (syncChannel && sb) { sb.removeChannel(syncChannel); syncChannel = null; }
+  if (chatChannel && sb) { sb.removeChannel(chatChannel); chatChannel = null; }
   if (sb) await sb.auth.signOut();
   syncUser = null;
   renderSyncUI();
   setSyncStatus("Signed out.", "");
+  $("#chatw-msgs").innerHTML = "";
+  updateChatAuth();
 }
 
 // Hook invoked by store.set on every local change.
@@ -1202,7 +1209,140 @@ async function initSync() {
     await onSignedIn(data.session.user);
   } else {
     setSyncStatus("Not signed in — sign in to sync across your devices.", "");
+    updateChatAuth();
   }
+}
+
+// ============================================================
+//  Cross-device Chat (Supabase `messages` table, realtime)
+// ============================================================
+let chatNick = store.get("org.nick", ""); // per-device, NOT synced
+let chatOpen = false;
+let chatUnread = 0;
+let chatChannel = null;
+
+function chatHue(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+  return h;
+}
+function chatTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+function renderChatMsg(m) {
+  const me = m.client_id === syncClientId;
+  const nick = m.nick || "Anon";
+  $("#chatw-msgs").append(
+    el("div", { class: `chatw-msg ${me ? "me" : ""}` }, [
+      el("div", { class: "chatw-nickline", style: `color:hsl(${chatHue(nick)},60%,50%)`, text: nick }),
+      el("div", { class: "chatw-bubble", text: m.body }),
+      el("div", { class: "chatw-time", text: chatTime(m.created_at) }),
+    ])
+  );
+}
+function chatScroll() {
+  const box = $("#chatw-msgs");
+  box.scrollTop = box.scrollHeight;
+}
+function setChatUnread(n) {
+  chatUnread = n;
+  const b = $("#chatw-unread");
+  b.textContent = n > 9 ? "9+" : String(n);
+  b.hidden = n <= 0;
+}
+
+function updateChatAuth() {
+  const signed = !!syncUser;
+  $("#chatw-hint").hidden = signed;
+  $("#chatw-input").disabled = !signed;
+  $("#chatw-form").querySelector("button").disabled = !signed;
+}
+
+function toggleChat(force) {
+  chatOpen = typeof force === "boolean" ? force : !chatOpen;
+  $("#chatw-panel").hidden = !chatOpen;
+  $("#chatw-icon").textContent = chatOpen ? "▾" : "💬";
+  if (chatOpen) {
+    setChatUnread(0);
+    (chatNick ? $("#chatw-input") : $("#chatw-nick")).focus();
+    chatScroll();
+  }
+}
+
+async function loadChat() {
+  if (!sb || !syncUser) return;
+  const { data, error } = await sb
+    .from("messages")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(100);
+  $("#chatw-msgs").innerHTML = "";
+  if (error) {
+    console.error("[chat] load", error);
+    $("#chatw-msgs").append(el("div", { class: "chatw-empty", text: "Couldn't load messages: " + error.message }));
+    return;
+  }
+  const rows = (data || []).slice().reverse();
+  if (!rows.length) {
+    $("#chatw-msgs").append(el("div", { class: "chatw-empty", text: "No messages yet. Say hi! 👋" }));
+  } else {
+    rows.forEach(renderChatMsg);
+  }
+  chatScroll();
+}
+
+function subscribeChat() {
+  if (!sb || !syncUser) return;
+  if (chatChannel) { sb.removeChannel(chatChannel); chatChannel = null; }
+  chatChannel = sb
+    .channel("chat_messages")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
+      const m = payload.new;
+      if (!m) return;
+      const empty = $("#chatw-msgs .chatw-empty");
+      if (empty) empty.remove();
+      renderChatMsg(m);
+      chatScroll();
+      if (!chatOpen && m.client_id !== syncClientId) setChatUnread(chatUnread + 1);
+    })
+    .subscribe();
+}
+
+async function sendChat(text) {
+  text = text.trim();
+  if (!text) return;
+  if (!sb || !syncUser) { toggleChat(true); return; }
+  const { error } = await sb.from("messages").insert({
+    nick: chatNick || "Anon",
+    body: text,
+    client_id: syncClientId,
+  });
+  if (error) {
+    console.error("[chat] send", error);
+    $("#chatw-msgs").append(el("div", { class: "chatw-empty", text: "Send failed: " + error.message }));
+    chatScroll();
+  }
+  // The realtime INSERT echoes the message back to us, so we don't render it here.
+}
+
+function initChat() {
+  $("#chatw-nick").value = chatNick;
+  $("#chatw-toggle").addEventListener("click", () => toggleChat());
+  $("#chatw-close").addEventListener("click", () => toggleChat(false));
+  $("#chatw-nick").addEventListener("change", (e) => {
+    chatNick = e.target.value.trim();
+    store.set("org.nick", chatNick); // not in SYNC_KEYS → stays local per device
+  });
+  $("#chatw-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = $("#chatw-input");
+    const text = input.value;
+    input.value = "";
+    sendChat(text);
+  });
+  updateChatAuth();
 }
 
 // ============================================================
@@ -1222,6 +1362,7 @@ initAiConfigUI();
 renderAiSuggestions();
 renderAiChat();
 updateBadges();
+initChat();
 initSync();
 refreshNotifNotice();
 

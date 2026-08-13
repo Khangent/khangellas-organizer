@@ -566,7 +566,62 @@ input[type="number"] { width: 80px; }
 .sync-form .btn-primary { align-self: flex-start; }
 .sync-who { margin-bottom: 14px; font-size: 0.92rem; }
 
+/* ---------- Floating cross-device chat ---------- */
+.chatw {
+  position: fixed; right: 22px; bottom: 22px; z-index: 1000;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 12px;
+}
+.chatw-toggle {
+  position: relative; width: 56px; height: 56px; border: none; cursor: pointer;
+  border-radius: 50%; color: #fff; font-size: 1.5rem;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  box-shadow: 0 6px 20px rgba(0,0,0,0.28);
+  display: grid; place-items: center; transition: transform 0.12s;
+}
+.chatw-toggle:hover { transform: translateY(-2px); }
+.chatw-unread {
+  position: absolute; top: -3px; right: -3px;
+  min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px;
+  background: var(--danger); color: #fff; font-size: 0.7rem; font-weight: 700;
+  display: grid; place-items: center; border: 2px solid var(--bg);
+}
+.chatw-panel {
+  width: 340px; max-width: calc(100vw - 44px);
+  height: 460px; max-height: calc(100vh - 130px);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.chatw-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+}
+.chatw-head strong { font-size: 0.95rem; white-space: nowrap; }
+.chatw-nick { flex: 1; min-width: 0; font-size: 0.82rem; padding: 6px 9px; }
+.chatw-close {
+  border: none; background: transparent; cursor: pointer; color: var(--text-muted);
+  font-size: 1rem; padding: 4px 7px; border-radius: 7px;
+}
+.chatw-close:hover { background: var(--surface-2); color: var(--text); }
+.chatw-msgs { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 9px; }
+.chatw-empty { margin: auto; color: var(--text-muted); font-size: 0.85rem; text-align: center; }
+.chatw-msg { display: flex; flex-direction: column; max-width: 82%; }
+.chatw-msg.me { align-self: flex-end; align-items: flex-end; }
+.chatw-nickline { font-size: 0.68rem; font-weight: 700; margin: 0 5px 2px; }
+.chatw-bubble {
+  padding: 8px 12px; border-radius: 14px; font-size: 0.88rem; line-height: 1.4;
+  background: var(--surface-2); border: 1px solid var(--border);
+  word-break: break-word; white-space: pre-wrap;
+}
+.chatw-msg.me .chatw-bubble { background: var(--primary); color: #fff; border-color: var(--primary); border-bottom-right-radius: 5px; }
+.chatw-msg:not(.me) .chatw-bubble { border-bottom-left-radius: 5px; }
+.chatw-time { font-size: 0.62rem; color: var(--text-muted); margin: 2px 5px 0; }
+.chatw-form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--border); }
+.chatw-form input { flex: 1; min-width: 0; }
+.chatw-hint { padding: 10px 14px; font-size: 0.8rem; color: var(--text-muted); border-top: 1px solid var(--border); }
+
 @media (max-width: 720px) {
+  .chatw-panel { width: calc(100vw - 44px); height: 60vh; }
   .app { flex-direction: column; }
   .sidebar { width: 100%; height: auto; position: relative; flex-direction: column; }
   .menu { flex-direction: row; flex-wrap: wrap; }

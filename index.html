@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Khangella's Organizer</title>
-  <link rel="stylesheet" href="styles.css?v=14" />
+  <link rel="stylesheet" href="styles.css?v=15" />
 </head>
 <body>
   <div class="app">
@@ -221,8 +221,29 @@
     </main>
   </div>
 
+  <!-- Floating cross-device chat -->
+  <div class="chatw" id="chatw">
+    <div class="chatw-panel" id="chatw-panel" hidden>
+      <div class="chatw-head">
+        <strong>💬 Chat</strong>
+        <input id="chatw-nick" class="chatw-nick" placeholder="your nickname" maxlength="24" autocomplete="off" />
+        <button class="chatw-close" id="chatw-close" title="Close">✕</button>
+      </div>
+      <div class="chatw-msgs" id="chatw-msgs"></div>
+      <div class="chatw-hint" id="chatw-hint" hidden>Sign in under “Sync” to chat across devices.</div>
+      <form class="chatw-form" id="chatw-form">
+        <input id="chatw-input" placeholder="Message…" autocomplete="off" required />
+        <button type="submit" class="btn-primary">Send</button>
+      </form>
+    </div>
+    <button class="chatw-toggle" id="chatw-toggle" title="Chat">
+      <span id="chatw-icon">💬</span>
+      <span class="chatw-unread" id="chatw-unread" hidden>0</span>
+    </button>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="tcg-data.js?v=14"></script>
-  <script src="app.js?v=14"></script>
+  <script src="tcg-data.js?v=15"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>
