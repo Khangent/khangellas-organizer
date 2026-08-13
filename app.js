@@ -292,9 +292,9 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-// Palette used to colour events by person
-const CAL_COLORS = ["#f6a5c0", "#a5d6a7", "#90caf9", "#ffcc80", "#ce93d8", "#fff59d"];
-const DEFAULT_CAL_COLOR = "#90caf9";
+// Palette used to colour events by person — two users only
+const CAL_COLORS = ["#f6a5c0", "#a5d6a7"];
+const DEFAULT_CAL_COLOR = "#f6a5c0";
 let calSelColor = CAL_COLORS[0];
 let calModalDate = null;
 
