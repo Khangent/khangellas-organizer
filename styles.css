@@ -257,6 +257,82 @@ input[type="number"] { width: 80px; }
 }
 .cal-event.todo { background: rgba(34,160,107,0.16); color: var(--accent); }
 
+/* ---------- Raid Organizer ---------- */
+.raid-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; flex-wrap: wrap; }
+.raid-progress { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 220px; }
+.raid-count { font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
+.raid-count.small { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; }
+
+.pbar {
+  flex: 1; height: 8px; min-width: 80px;
+  background: var(--surface-2); border-radius: 999px; overflow: hidden;
+}
+.pbar-fill {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+  transition: width 0.3s ease;
+}
+
+.raid-people { display: flex; flex-direction: column; gap: 22px; }
+
+.person-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow);
+}
+.person-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.person-name {
+  flex: 1; min-width: 0;
+  font-size: 1.1rem; font-weight: 700;
+  border: 1px solid transparent; background: transparent;
+  padding: 6px 9px; border-radius: 8px;
+}
+.person-name:hover { border-color: var(--border); }
+
+.char-grid {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+.char-card {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.char-head { display: flex; align-items: center; gap: 8px; }
+.char-name {
+  flex: 1; min-width: 0; font-weight: 600;
+  border: 1px solid transparent; background: transparent;
+  padding: 5px 7px; border-radius: 7px;
+}
+.char-name:hover { border-color: var(--border); }
+.char-count {
+  font-size: 0.76rem; font-weight: 700; color: var(--text-muted);
+  padding: 3px 9px; border-radius: 999px; background: var(--surface);
+  white-space: nowrap;
+}
+.char-count.complete { background: rgba(34,160,107,0.16); color: var(--accent); }
+
+.char-meta { display: flex; gap: 6px; }
+.char-cls, .char-ilvl { font-size: 0.8rem; padding: 6px 8px; flex: 1; min-width: 0; }
+.char-ilvl { max-width: 90px; }
+
+.raid-rows { display: flex; flex-direction: column; gap: 6px; }
+.raid-row { display: flex; align-items: center; gap: 8px; }
+.raid-row .check { width: 20px; height: 20px; }
+.raid-name {
+  flex: 1; min-width: 0; font-size: 0.85rem;
+  padding: 6px 8px; border: 1px solid transparent;
+  background: var(--surface); border-radius: 7px;
+}
+.raid-name:hover { border-color: var(--border); }
+.raid-row.done .raid-name { text-decoration: line-through; color: var(--text-muted); }
+
+.char-actions {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 6px; margin-top: 2px;
+}
+.btn-ghost.tiny { font-size: 0.8rem; padding: 5px 10px; }
+.icon-btn.tiny { font-size: 0.85rem; padding: 5px; }
+
 @media (max-width: 720px) {
   .app { flex-direction: column; }
   .sidebar { width: 100%; height: auto; position: relative; flex-direction: column; }

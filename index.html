@@ -30,6 +30,10 @@
           <span class="icon">⏰</span><span>Reminders</span>
           <span class="badge" id="badge-reminders"></span>
         </button>
+        <button class="menu-item" data-view="raids">
+          <span class="icon">⚔️</span><span>Raid Organizer</span>
+          <span class="badge" id="badge-raids"></span>
+        </button>
       </nav>
       <div class="sidebar-footer">
         <button id="theme-toggle" class="theme-toggle">
@@ -110,6 +114,20 @@
           <button type="submit" class="btn-primary">Add</button>
         </form>
         <div class="list" id="reminder-list"></div>
+      </section>
+
+      <!-- Raid Organizer view -->
+      <section class="view" id="view-raids">
+        <header class="view-header">
+          <h2>Raid Organizer</h2>
+          <p class="view-sub">Track weekly Lost Ark raids per character. Click a name to rename it, and check raids off as you clear them.</p>
+        </header>
+        <div class="raid-toolbar">
+          <div class="raid-progress" id="raid-progress-overall"></div>
+          <button class="btn-ghost" id="raid-add-person">+ Player</button>
+          <button class="btn-primary" id="raid-reset-week">↻ New week</button>
+        </div>
+        <div class="raid-people" id="raid-people"></div>
       </section>
     </main>
   </div>

@@ -25,12 +25,14 @@ let todos = store.get("org.todos", []);
 let shopping = store.get("org.shopping", []);
 let events = store.get("org.events", []);
 let reminders = store.get("org.reminders", []);
+let raids = store.get("org.raids", []);
 
 const save = {
   todos: () => store.set("org.todos", todos),
   shopping: () => store.set("org.shopping", shopping),
   events: () => store.set("org.events", events),
   reminders: () => store.set("org.reminders", reminders),
+  raids: () => store.set("org.raids", raids),
 };
 
 // ---------- Small DOM helpers ----------
@@ -104,6 +106,8 @@ function updateBadges() {
   setBadge("todos", todos.filter((t) => !t.done).length);
   setBadge("shopping", shopping.filter((s) => !s.done).length);
   setBadge("reminders", reminders.filter((r) => !r.notified).length);
+  const rs = raidStats(allCharacters());
+  setBadge("raids", rs.total - rs.done);
 }
 
 // ============================================================
@@ -441,12 +445,179 @@ function checkReminders() {
 }
 
 // ============================================================
+//  Raid Organizer (Lost Ark weekly raid tracker)
+// ============================================================
+const RAID_DEFAULTS = ["Raid 1", "Raid 2", "Raid 3"];
+const mkRaids = () => RAID_DEFAULTS.map((n) => ({ id: uid(), name: n, done: false }));
+const mkChar = (i) => ({ id: uid(), name: `Character ${i}`, cls: "", ilvl: "", raids: mkRaids() });
+const mkPerson = (name, charCount) => ({
+  id: uid(),
+  name,
+  characters: Array.from({ length: charCount }, (_, i) => mkChar(i + 1)),
+});
+
+function seedRaids() {
+  return [mkPerson("Player 1", 6), mkPerson("Player 2", 6)];
+}
+
+function allCharacters() {
+  return raids.flatMap((p) => p.characters);
+}
+
+function raidStats(chars) {
+  let done = 0, total = 0;
+  chars.forEach((c) => c.raids.forEach((r) => { total++; if (r.done) done++; }));
+  return { done, total };
+}
+
+function progressBar(done, total) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  return el("div", { class: "pbar", title: `${pct}%` }, [
+    el("div", { class: "pbar-fill", style: `width:${pct}%` }),
+  ]);
+}
+
+function renderRaids() {
+  // Overall progress
+  const overall = $("#raid-progress-overall");
+  overall.innerHTML = "";
+  const all = raidStats(allCharacters());
+  overall.append(
+    el("span", { class: "raid-count", text: `${all.done} / ${all.total} raids cleared` }),
+    progressBar(all.done, all.total)
+  );
+
+  const wrap = $("#raid-people");
+  wrap.innerHTML = "";
+
+  if (!raids.length) {
+    wrap.append(el("div", { class: "empty", text: "No players yet. Add one to get started. ⚔️" }));
+  }
+
+  raids.forEach((person) => {
+    const ps = raidStats(person.characters);
+
+    const head = el("div", { class: "person-head" }, [
+      el("input", {
+        class: "person-name", value: person.name, placeholder: "Player name",
+        onchange: (e) => { person.name = e.target.value; save.raids(); },
+      }),
+      el("span", { class: "raid-count small", text: `${ps.done}/${ps.total}` }),
+      el("button", {
+        class: "btn-ghost tiny", text: "+ Character",
+        onclick: () => {
+          person.characters.push(mkChar(person.characters.length + 1));
+          save.raids(); renderRaids(); updateBadges();
+        },
+      }),
+      el("button", {
+        class: "icon-btn", title: "Remove player", text: "🗑",
+        onclick: () => {
+          if (confirm(`Remove ${person.name || "this player"} and all their characters?`)) {
+            raids = raids.filter((p) => p.id !== person.id);
+            save.raids(); renderRaids(); updateBadges();
+          }
+        },
+      }),
+    ]);
+
+    const grid = el("div", { class: "char-grid" });
+    person.characters.forEach((ch) => {
+      const cs = raidStats([ch]);
+
+      const rows = el("div", { class: "raid-rows" });
+      ch.raids.forEach((r) => {
+        rows.append(el("div", { class: `raid-row ${r.done ? "done" : ""}` }, [
+          el("button", {
+            class: `check ${r.done ? "on" : ""}`, title: "Toggle cleared",
+            onclick: () => { r.done = !r.done; save.raids(); renderRaids(); updateBadges(); },
+          }),
+          el("input", {
+            class: "raid-name", value: r.name, placeholder: "Raid name",
+            onchange: (e) => { r.name = e.target.value; save.raids(); },
+          }),
+          el("button", {
+            class: "icon-btn tiny", title: "Remove raid", text: "✕",
+            onclick: () => {
+              ch.raids = ch.raids.filter((x) => x.id !== r.id);
+              save.raids(); renderRaids(); updateBadges();
+            },
+          }),
+        ]));
+      });
+
+      grid.append(el("div", { class: "char-card" }, [
+        el("div", { class: "char-head" }, [
+          el("input", {
+            class: "char-name", value: ch.name, placeholder: "Character",
+            onchange: (e) => { ch.name = e.target.value; save.raids(); },
+          }),
+          el("span", {
+            class: `char-count ${cs.done === cs.total && cs.total > 0 ? "complete" : ""}`,
+            text: `${cs.done}/${cs.total}`,
+          }),
+        ]),
+        el("div", { class: "char-meta" }, [
+          el("input", {
+            class: "char-cls", value: ch.cls, placeholder: "Class",
+            onchange: (e) => { ch.cls = e.target.value; save.raids(); },
+          }),
+          el("input", {
+            class: "char-ilvl", value: ch.ilvl, placeholder: "Item lvl",
+            onchange: (e) => { ch.ilvl = e.target.value; save.raids(); },
+          }),
+        ]),
+        rows,
+        el("div", { class: "char-actions" }, [
+          el("button", {
+            class: "btn-ghost tiny", text: "+ Raid",
+            onclick: () => {
+              ch.raids.push({ id: uid(), name: `Raid ${ch.raids.length + 1}`, done: false });
+              save.raids(); renderRaids(); updateBadges();
+            },
+          }),
+          el("button", {
+            class: "icon-btn tiny", title: "Remove character", text: "🗑",
+            onclick: () => {
+              person.characters = person.characters.filter((x) => x.id !== ch.id);
+              save.raids(); renderRaids(); updateBadges();
+            },
+          }),
+        ]),
+      ]));
+    });
+
+    wrap.append(el("div", { class: "person-card" }, [head, grid]));
+  });
+}
+
+$("#raid-add-person").addEventListener("click", () => {
+  raids.push(mkPerson(`Player ${raids.length + 1}`, 1));
+  save.raids();
+  renderRaids();
+  updateBadges();
+});
+
+$("#raid-reset-week").addEventListener("click", () => {
+  if (!confirm("Start a new week? This unchecks every raid for all characters.")) return;
+  raids.forEach((p) => p.characters.forEach((c) => c.raids.forEach((r) => (r.done = false))));
+  save.raids();
+  renderRaids();
+  updateBadges();
+});
+
+// ============================================================
 //  Init
 // ============================================================
+if (!raids.length) {
+  raids = seedRaids();
+  save.raids();
+}
 renderTodos();
 renderShopping();
 renderCalendar();
 renderReminders();
+renderRaids();
 updateBadges();
 refreshNotifNotice();
 
