@@ -569,6 +569,59 @@ input[type="number"] { width: 80px; }
 .sync-form .btn-primary { align-self: flex-start; }
 .sync-who { margin-bottom: 14px; font-size: 0.92rem; }
 
+/* ---------- Recipe Extractor ---------- */
+.rex-panel { display: flex; flex-direction: column; gap: 12px; margin-bottom: 22px; max-width: 720px; }
+.linkbtn {
+  border: none; background: none; padding: 0; cursor: pointer;
+  color: var(--primary); font: inherit; font-weight: 600; text-decoration: underline;
+}
+.rex-drop {
+  border: 2px dashed var(--border); border-radius: var(--radius);
+  background: var(--surface); padding: 24px; text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.rex-drop.drag { border-color: var(--primary); background: rgba(236,72,153,0.06); }
+.rex-drop-icon { font-size: 1.9rem; margin-bottom: 6px; }
+.rex-drop p { font-size: 0.92rem; }
+.rex-drop .rex-sub { color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; }
+.rex-preview { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
+.rex-thumb { width: 74px; height: 74px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
+.rex-text, .rex-url, .rex-search { width: 100%; font: inherit; }
+.rex-text { resize: vertical; min-height: 64px; }
+.rex-actions { display: flex; align-items: center; gap: 12px; }
+
+.rex-result {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow);
+  margin-bottom: 24px; max-width: 720px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.rex-result-title { font-size: 1.05rem; }
+.rex-field { display: flex; flex-direction: column; gap: 5px; }
+.rex-field-label { font-size: 0.8rem; font-weight: 600; color: var(--text-muted); }
+.rex-field input, .rex-field textarea { width: 100%; font: inherit; resize: vertical; }
+.rex-row { display: flex; gap: 12px; }
+.rex-row .rex-field { flex: 1; }
+.rex-result-actions { display: flex; gap: 10px; }
+
+.rex-listwrap { max-width: 720px; }
+.rex-search { margin-bottom: 14px; }
+.rex-list { display: flex; flex-direction: column; gap: 10px; }
+.rex-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.rex-card-head { display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; }
+.rex-card-head:hover { background: var(--surface-2); }
+.rex-card-thumb { width: 52px; height: 52px; flex-shrink: 0; border-radius: 10px; object-fit: cover; border: 1px solid var(--border); }
+.rex-card-thumb.ph { display: grid; place-items: center; font-size: 1.4rem; background: var(--surface-2); }
+.rex-card-info { flex: 1; min-width: 0; }
+.rex-card-title { font-weight: 700; font-size: 0.98rem; }
+.rex-card-meta { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+.rex-card-body { padding: 4px 16px 16px; border-top: 1px solid var(--border); }
+.rex-card-body h4 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); margin: 14px 0 6px; }
+.rex-card-body ul, .rex-card-body ol { padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.rex-card-body li { font-size: 0.9rem; line-height: 1.4; }
+.rex-notes { font-size: 0.85rem; color: var(--text-muted); margin-top: 12px; font-style: italic; }
+.rex-srclink { display: inline-block; margin-top: 12px; font-size: 0.82rem; color: var(--primary); font-weight: 600; }
+
 /* ---------- Floating cross-device chat ---------- */
 .chatw {
   position: fixed; right: 22px; bottom: 22px; z-index: 1000;

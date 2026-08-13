@@ -33,6 +33,7 @@ let shopping = store.get("org.shopping", []);
 let events = store.get("org.events", []);
 let reminders = store.get("org.reminders", []);
 let raids = store.get("org.raids", []);
+let recipes = store.get("org.recipes", []);
 
 const save = {
   todos: () => store.set("org.todos", todos),
@@ -40,6 +41,7 @@ const save = {
   events: () => store.set("org.events", events),
   reminders: () => store.set("org.reminders", reminders),
   raids: () => store.set("org.raids", raids),
+  recipes: () => store.set("org.recipes", recipes),
 };
 
 // ---------- Small DOM helpers ----------
@@ -889,10 +891,10 @@ function aiSystemPrompt() {
   );
 }
 
-async function aiComplete(messages) {
+async function aiComplete(messages, opts = {}) {
   const url = aiCfg.base.replace(/\/+$/, "") + "/v1/chat/completions";
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 45000);
+  const timer = setTimeout(() => ctrl.abort(), opts.timeout ?? 45000);
   let res;
   try {
     console.log("[AI] POST", url, "model:", aiCfg.model);
@@ -905,8 +907,8 @@ async function aiComplete(messages) {
       body: JSON.stringify({
         model: aiCfg.model,
         messages,
-        temperature: 0.7,
-        max_tokens: 1024,
+        temperature: opts.temperature ?? 0.7,
+        max_tokens: opts.max_tokens ?? 1024,
       }),
       signal: ctrl.signal,
     });
@@ -1048,7 +1050,7 @@ const SUPABASE_URL = "https://audcuqjwpdqeyxvjyrin.supabase.co";
 const SUPABASE_ANON =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1ZGN1cWp3cGRxZXl4dmp5cmluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY2MjA5MDgsImV4cCI6MjEwMjE5NjkwOH0.ppvvaI5queLd-Z8uKEn-OHZQ4YxiYZvMl9vnOFaObRo";
 // Everything syncs EXCEPT the AI key/chat (org.ai, org.aichat stay device-local).
-const SYNC_KEYS = ["org.todos", "org.shopping", "org.events", "org.reminders", "org.raids", "org.tcg", "org.theme"];
+const SYNC_KEYS = ["org.todos", "org.shopping", "org.events", "org.reminders", "org.raids", "org.tcg", "org.recipes", "org.theme"];
 const syncClientId = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 let sb = null;
@@ -1097,9 +1099,10 @@ function applyRemoteState(data) {
     reminders = store.get("org.reminders", []);
     raids = store.get("org.raids", []);
     tcgOwned = store.get("org.tcg", {});
+    recipes = store.get("org.recipes", []);
     if (data["org.theme"]) applyTheme(data["org.theme"]);
     renderTodos(); renderShopping(); renderCalendar(); renderReminders();
-    renderRaids(); renderTCG(); updateBadges();
+    renderRaids(); renderTCG(); renderRecipes(); updateBadges();
   } finally {
     syncApplying = false;
   }
@@ -1346,6 +1349,315 @@ function initChat() {
 }
 
 // ============================================================
+//  Recipe Extractor (image / video / text → structured recipe via AI)
+// ============================================================
+const RECIPE_SYS =
+  "You are a recipe extraction assistant. From the provided image(s) and/or text, extract the recipe. " +
+  "Respond with ONLY a JSON object (no markdown, no commentary) in exactly this shape: " +
+  '{"title": string, "servings": string, "time": string, "ingredients": [string], "steps": [string], "notes": string}. ' +
+  "Ingredients like '200 g flour'. Steps: short, clear, imperative, in order. Use empty strings/arrays for anything not shown. " +
+  'If no recipe is present, return {"title":"","ingredients":[],"steps":[]}.';
+
+let rexImages = [];   // data URLs to send to the model
+let rexSource = "";   // "Screenshot" | "GIF" | "Video" | "Text"
+let rexDraft = null;  // extracted-but-unsaved recipe
+let rexBusy = false;
+let recipeQuery = "";
+
+function setRexStatus(text, kind = "") {
+  const s = $("#rex-status");
+  if (s) { s.textContent = text; s.className = "ai-status " + kind; }
+}
+
+function parseRecipeJSON(s) {
+  let t = (s || "").trim();
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) t = fence[1].trim();
+  try { return JSON.parse(t); } catch {}
+  const a = t.indexOf("{"), b = t.lastIndexOf("}");
+  if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch {} }
+  return null;
+}
+
+function dataUrlThumb(dataUrl, maxSize, cb) {
+  const img = new Image();
+  img.onload = () => {
+    const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+    const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    c.getContext("2d").drawImage(img, 0, 0, w, h);
+    cb(c.toDataURL("image/jpeg", 0.65));
+  };
+  img.onerror = () => cb("");
+  img.src = dataUrl;
+}
+
+function seekVideo(video, t) {
+  return new Promise((resolve) => {
+    const on = () => { video.removeEventListener("seeked", on); resolve(); };
+    video.addEventListener("seeked", on);
+    try { video.currentTime = t; } catch { resolve(); }
+  });
+}
+function frameDataURL(video, maxSize) {
+  const scale = Math.min(1, maxSize / Math.max(video.videoWidth, video.videoHeight));
+  const w = Math.round(video.videoWidth * scale), h = Math.round(video.videoHeight * scale);
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  c.getContext("2d").drawImage(video, 0, 0, w, h);
+  return c.toDataURL("image/jpeg", 0.8);
+}
+async function sampleVideoFrames(file, count, maxSize) {
+  const url = URL.createObjectURL(file);
+  const video = document.createElement("video");
+  video.muted = true; video.playsInline = true; video.preload = "auto"; video.src = url;
+  await new Promise((resolve, reject) => {
+    video.onloadeddata = resolve;
+    video.onerror = () => reject(new Error("Couldn't read that video file."));
+  });
+  const dur = video.duration && isFinite(video.duration) ? video.duration : 0;
+  const frames = [];
+  for (let i = 0; i < Math.max(1, count); i++) {
+    const t = dur ? dur * ((i + 0.5) / count) : 0;
+    await seekVideo(video, t);
+    frames.push(frameDataURL(video, maxSize));
+    if (!dur) break;
+  }
+  URL.revokeObjectURL(url);
+  return frames;
+}
+
+function showRexPreview(images) {
+  const p = $("#rex-preview");
+  p.innerHTML = "";
+  p.hidden = !images.length;
+  images.slice(0, 6).forEach((src) => p.append(el("img", { class: "rex-thumb", src })));
+}
+
+function handleRexFile(file) {
+  if (!file) return;
+  if (file.type.startsWith("video/")) {
+    setRexStatus("Reading video…", "");
+    sampleVideoFrames(file, 6, 800)
+      .then((frames) => {
+        rexImages = frames; rexSource = "Video"; showRexPreview(frames);
+        setRexStatus(frames.length + " frame(s) captured — click Extract.", "ok");
+      })
+      .catch((err) => { console.error(err); setRexStatus(err.message, "warn"); });
+  } else if (file.type.startsWith("image/")) {
+    resizeImage(file, 1280, (dataUrl) => {
+      rexImages = [dataUrl];
+      rexSource = file.type === "image/gif" ? "GIF" : "Screenshot";
+      showRexPreview([dataUrl]);
+      setRexStatus("Image ready — click Extract.", "ok");
+    });
+  } else {
+    setRexStatus("Unsupported file. Use an image, GIF, or video.", "warn");
+  }
+}
+
+function normalizeRecipe(o, source, url, thumb) {
+  const arr = (x) =>
+    Array.isArray(x)
+      ? x.map((s) => String(s).trim()).filter(Boolean)
+      : x ? String(x).split("\n").map((s) => s.trim()).filter(Boolean) : [];
+  return {
+    id: uid(),
+    title: (o.title || "Untitled recipe").toString().trim(),
+    servings: (o.servings || "").toString().trim(),
+    time: (o.time || "").toString().trim(),
+    ingredients: arr(o.ingredients),
+    steps: arr(o.steps),
+    notes: (o.notes || "").toString().trim(),
+    source: source || "",
+    sourceUrl: url || "",
+    thumb: thumb || "",
+    createdAt: new Date().toISOString(),
+  };
+}
+
+async function runExtract() {
+  if (rexBusy) return;
+  const text = $("#rex-text").value.trim();
+  const url = $("#rex-url").value.trim();
+  if (!aiCfg.key) {
+    setRexStatus("Add your AI key in the AI Assistant tab first, then come back.", "warn");
+    return;
+  }
+  if (!rexImages.length && !text) {
+    setRexStatus(
+      url
+        ? "Reel links can't be fetched in the browser yet. Screenshot the reel (or paste its caption) and try that."
+        : "Add a screenshot / video / GIF, or paste some text first.",
+      "warn"
+    );
+    return;
+  }
+  rexBusy = true;
+  $("#rex-extract").disabled = true;
+  setRexStatus("Extracting… ✨", "");
+  try {
+    const content = [];
+    let instr = "Extract the recipe as specified in the system message.";
+    if (text) instr += "\n\nText provided:\n" + text;
+    if (url) instr += "\n\n(Source link for reference only, you cannot open it: " + url + ")";
+    content.push({ type: "text", text: instr });
+    rexImages.forEach((src) => content.push({ type: "image_url", image_url: { url: src } }));
+
+    const raw = await aiComplete(
+      [{ role: "system", content: RECIPE_SYS }, { role: "user", content }],
+      { temperature: 0.2, max_tokens: 1600, timeout: 90000 }
+    );
+    const obj = parseRecipeJSON(raw);
+    if (!obj || (!obj.title && !(obj.ingredients || []).length && !(obj.steps || []).length)) {
+      setRexStatus("Hmm, I couldn't find a recipe there. Try a clearer screenshot or paste the text.", "warn");
+      return;
+    }
+    const finish = (thumb) => {
+      rexDraft = normalizeRecipe(obj, rexSource || (text ? "Text" : ""), url, thumb);
+      renderRexResult();
+      setRexStatus("Extracted ✓ — review and save below.", "ok");
+    };
+    if (rexImages[0]) dataUrlThumb(rexImages[0], 220, finish);
+    else finish("");
+  } catch (err) {
+    console.error("[recipe] extract", err);
+    setRexStatus("Extraction failed: " + err.message, "warn");
+  } finally {
+    rexBusy = false;
+    $("#rex-extract").disabled = false;
+  }
+}
+
+function rexField(label, input) {
+  return el("label", { class: "rex-field" }, [el("span", { class: "rex-field-label", text: label }), input]);
+}
+
+function renderRexResult() {
+  const box = $("#rex-result");
+  box.hidden = false;
+  box.innerHTML = "";
+  const d = rexDraft;
+  box.append(
+    el("h3", { class: "rex-result-title", text: "Review & save" }),
+    rexField("Title", el("input", { class: "rex-f-title", value: d.title })),
+    el("div", { class: "rex-row" }, [
+      rexField("Servings", el("input", { class: "rex-f-serv", value: d.servings, placeholder: "e.g. 4" })),
+      rexField("Time", el("input", { class: "rex-f-time", value: d.time, placeholder: "e.g. 30 min" })),
+    ]),
+    rexField("Ingredients (one per line)", el("textarea", { class: "rex-f-ing", rows: "6" }, [d.ingredients.join("\n")])),
+    rexField("Steps (one per line)", el("textarea", { class: "rex-f-steps", rows: "8" }, [d.steps.join("\n")])),
+    el("div", { class: "rex-result-actions" }, [
+      el("button", { class: "btn-primary", text: "💾 Save recipe", onclick: saveDraft }),
+      el("button", { class: "btn-ghost", text: "Discard", onclick: discardDraft }),
+    ])
+  );
+}
+
+function saveDraft() {
+  const box = $("#rex-result");
+  const g = (sel) => box.querySelector(sel);
+  const lines = (v) => v.split("\n").map((s) => s.trim()).filter(Boolean);
+  rexDraft.title = g(".rex-f-title").value.trim() || "Untitled recipe";
+  rexDraft.servings = g(".rex-f-serv").value.trim();
+  rexDraft.time = g(".rex-f-time").value.trim();
+  rexDraft.ingredients = lines(g(".rex-f-ing").value);
+  rexDraft.steps = lines(g(".rex-f-steps").value);
+  recipes.unshift(rexDraft);
+  save.recipes();
+  discardDraft();
+  rexImages = []; rexSource = "";
+  $("#rex-text").value = ""; $("#rex-url").value = "";
+  showRexPreview([]);
+  setRexStatus("Saved ✓", "ok");
+  renderRecipes();
+}
+
+function discardDraft() {
+  rexDraft = null;
+  const box = $("#rex-result");
+  box.hidden = true;
+  box.innerHTML = "";
+}
+
+function renderRecipes() {
+  const list = $("#rex-list");
+  if (!list) return;
+  list.innerHTML = "";
+  if (!recipes.length) {
+    list.append(el("div", { class: "empty", text: "No saved recipes yet. Extract one above! 🍳" }));
+    return;
+  }
+  const q = recipeQuery.toLowerCase();
+  const items = recipes.filter(
+    (r) => !q || (r.title + " " + r.ingredients.join(" ")).toLowerCase().includes(q)
+  );
+  if (!items.length) {
+    list.append(el("div", { class: "empty", text: "No recipes match your search." }));
+    return;
+  }
+  items.forEach((r) => {
+    const body = el("div", { class: "rex-card-body", hidden: "hidden" }, [
+      r.ingredients.length
+        ? el("div", {}, [el("h4", { text: "Ingredients" }), el("ul", {}, r.ingredients.map((i) => el("li", { text: i })))])
+        : null,
+      r.steps.length
+        ? el("div", {}, [el("h4", { text: "Steps" }), el("ol", {}, r.steps.map((s) => el("li", { text: s })))])
+        : null,
+      r.notes ? el("p", { class: "rex-notes", text: r.notes }) : null,
+      r.sourceUrl ? el("a", { class: "rex-srclink", href: r.sourceUrl, target: "_blank", rel: "noopener", text: "Open source ↗" }) : null,
+    ]);
+    const head = el("div", { class: "rex-card-head", onclick: () => { body.hidden = !body.hidden; } }, [
+      r.thumb
+        ? el("img", { class: "rex-card-thumb", src: r.thumb, alt: "" })
+        : el("div", { class: "rex-card-thumb ph", text: "🍽" }),
+      el("div", { class: "rex-card-info" }, [
+        el("div", { class: "rex-card-title", text: r.title }),
+        el("div", { class: "rex-card-meta", text: [r.time, r.servings ? `${r.servings} servings` : "", r.source].filter(Boolean).join(" · ") }),
+      ]),
+      el("button", {
+        class: "icon-btn", title: "Delete", text: "🗑",
+        onclick: (e) => {
+          e.stopPropagation();
+          if (confirm(`Delete “${r.title}”?`)) { recipes = recipes.filter((x) => x.id !== r.id); save.recipes(); renderRecipes(); }
+        },
+      }),
+    ]);
+    list.append(el("div", { class: "rex-card" }, [head, body]));
+  });
+}
+
+function initRecipes() {
+  const file = $("#rex-file");
+  const drop = $("#rex-drop");
+  $("#rex-browse").addEventListener("click", () => file.click());
+  file.addEventListener("change", () => { if (file.files[0]) handleRexFile(file.files[0]); file.value = ""; });
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("drag"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("drag"));
+  drop.addEventListener("drop", (e) => {
+    e.preventDefault(); drop.classList.remove("drag");
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) handleRexFile(f);
+  });
+  $("#rex-extract").addEventListener("click", runExtract);
+  $("#rex-search").addEventListener("input", (e) => { recipeQuery = e.target.value.trim(); renderRecipes(); });
+  window.addEventListener("paste", (e) => {
+    const view = $("#view-recipes");
+    if (!view || !view.classList.contains("active")) return;
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const it of items) {
+      if (it.type && it.type.startsWith("image/")) {
+        const f = it.getAsFile();
+        if (f) { handleRexFile(f); e.preventDefault(); }
+        break;
+      }
+    }
+  });
+}
+
+// ============================================================
 //  Init
 // ============================================================
 if (!raids.length) {
@@ -1358,10 +1670,12 @@ renderCalendar();
 renderReminders();
 renderRaids();
 renderTCG();
+renderRecipes();
 initAiConfigUI();
 renderAiSuggestions();
 renderAiChat();
 updateBadges();
+initRecipes();
 initChat();
 initSync();
 refreshNotifNotice();
