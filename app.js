@@ -634,6 +634,45 @@ function raidStats(chars) {
   return { done, total };
 }
 
+// ---- Drag & drop: reorder character tiles (within or across players) ----
+let raidDrag = null; // { charId } of the tile currently being dragged
+
+function findCharLoc(charId) {
+  for (const p of raids) {
+    const idx = p.characters.findIndex((c) => c.id === charId);
+    if (idx !== -1) return { person: p, idx };
+  }
+  return null;
+}
+
+function clearDropMarks() {
+  document
+    .querySelectorAll(".drop-before, .drop-after")
+    .forEach((t) => t.classList.remove("drop-before", "drop-after"));
+}
+
+function groupRect(trs) {
+  const first = trs[0].getBoundingClientRect();
+  const last = trs[trs.length - 1].getBoundingClientRect();
+  return { mid: (first.top + last.bottom) / 2 };
+}
+
+// Move the dragged character next to the target character (before/after it).
+function moveCharacter(dragCharId, targetPersonId, targetCharId, after) {
+  if (dragCharId === targetCharId) return;
+  const from = findCharLoc(dragCharId);
+  const targetPerson = raids.find((p) => p.id === targetPersonId);
+  if (!from || !targetPerson) return;
+  const [moved] = from.person.characters.splice(from.idx, 1);
+  let tIdx = targetPerson.characters.findIndex((c) => c.id === targetCharId);
+  if (tIdx === -1) tIdx = targetPerson.characters.length;
+  else if (after) tIdx += 1;
+  targetPerson.characters.splice(tIdx, 0, moved);
+  save.raids();
+  renderRaids();
+  updateBadges();
+}
+
 function progressBar(done, total) {
   const pct = total ? Math.round((done / total) * 100) : 0;
   return el("div", { class: "pbar", title: `${pct}%` }, [
@@ -728,6 +767,25 @@ function renderRaids() {
       const cs = raidStats([ch]);
       const complete = cs.total > 0 && cs.done === cs.total;
       const color = GROUP_COLORS[ci % GROUP_COLORS.length];
+      const groupTrs = []; // all <tr>s of this tile, filled in below
+
+      // Drag handle — grabbing it drags the whole tile (char + raids + gold)
+      const grip = el("div", {
+        class: "char-grip", title: "Drag to reorder", text: "⠿", draggable: "true",
+        ondragstart: (e) => {
+          raidDrag = { charId: ch.id };
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", ch.id);
+          const cell = e.currentTarget.closest("td");
+          if (cell) e.dataTransfer.setDragImage(cell, 24, 24);
+          groupTrs.forEach((t) => t.classList.add("row-dragging"));
+        },
+        ondragend: () => {
+          raidDrag = null;
+          clearDropMarks();
+          groupTrs.forEach((t) => t.classList.remove("row-dragging"));
+        },
+      });
 
       // The character info cell (spans all of this character's raid rows)
       const avatar = el("div", {
@@ -750,6 +808,7 @@ function renderRaids() {
         rowspan: String(Math.max(1, ch.raids.length)),
       }, [
         el("div", { class: "char-mini" }, [
+          grip,
           avatar,
           el("div", { class: "char-mini-info" }, [
             el("div", { class: "char-mini-top" }, [
@@ -793,6 +852,27 @@ function renderRaids() {
       raidList.forEach((r, ri) => {
         const last = ri === raidList.length - 1;
         const tr = el("tr", { class: `raid-tr ${r && r.done ? "done" : ""} ${last ? "grp-end" : ""}` });
+        groupTrs.push(tr);
+
+        // Whole tile is a drop zone: dropping before/after this character reorders it.
+        tr.addEventListener("dragover", (e) => {
+          if (!raidDrag || raidDrag.charId === ch.id) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          const after = e.clientY > groupRect(groupTrs).mid;
+          clearDropMarks();
+          (after ? groupTrs[groupTrs.length - 1] : groupTrs[0])
+            .classList.add(after ? "drop-after" : "drop-before");
+        });
+        tr.addEventListener("drop", (e) => {
+          if (!raidDrag || raidDrag.charId === ch.id) { clearDropMarks(); return; }
+          e.preventDefault();
+          const after = e.clientY > groupRect(groupTrs).mid;
+          const dragged = raidDrag.charId;
+          clearDropMarks();
+          moveCharacter(dragged, person.id, ch.id, after);
+        });
+
         if (ri === 0) tr.append(charCell);
 
         if (!r) {
