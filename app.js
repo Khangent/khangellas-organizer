@@ -1869,6 +1869,59 @@ const GAME_STATUS = {
 const GAME_ORDER = { want: 0, playing: 1, played: 2 };
 let gameFilter = "all";
 
+// Extract a Steam App ID from a store link or a raw numeric id.
+function parseSteamId(input) {
+  const s = (input || "").trim();
+  if (!s) return "";
+  if (/^\d+$/.test(s)) return s;
+  const m = s.match(/\/app\/(\d+)/i) || s.match(/[?&]appids?=(\d+)/i);
+  return m ? m[1] : "";
+}
+
+// Steam CDN header art (460×215) — hotlinks fine cross-origin.
+const steamHeader = (id) => `https://cdn.cloudflare.steamstatic.com/steam/apps/${id}/header.jpg`;
+
+// Cover image for a game: custom upload wins, else Steam art, else none.
+function gameCover(g) {
+  if (g.cover) return g.cover;
+  if (g.steamId) return steamHeader(g.steamId);
+  return "";
+}
+
+// Click a cover to set/replace its art: paste a Steam link/App ID, or upload.
+function setGameArt(g) {
+  const v = prompt(
+    "Paste a Steam store link or App ID for the cover.\n\n(Leave blank and press OK to upload your own image instead.)",
+    g.steamId || ""
+  );
+  if (v === null) return; // cancelled
+  const id = parseSteamId(v);
+  if (id) {
+    g.steamId = id;
+    g.cover = "";
+    if (!g.platform) g.platform = "Steam";
+    save.games();
+    renderGames();
+  } else if (v.trim() === "") {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.addEventListener("change", () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      resizeImage(file, 640, (dataUrl) => {
+        g.cover = dataUrl;
+        g.steamId = "";
+        save.games();
+        renderGames();
+      });
+    });
+    input.click();
+  } else {
+    alert("Couldn't find a Steam App ID in that. Use a store link like\nhttps://store.steampowered.com/app/1245620/…  or just the number.");
+  }
+}
+
 function renderGames() {
   const list = $("#game-list");
   if (!list) return;
@@ -1889,21 +1942,44 @@ function renderGames() {
 
   items.forEach((g) => {
     const st = GAME_STATUS[g.status] || GAME_STATUS.want;
-    const body = [el("div", { class: "card-title", text: g.name })];
-    if (g.platform) {
-      body.push(el("div", { class: "card-meta" }, [el("span", { class: "tag", text: g.platform })]));
-    }
+    const src = gameCover(g);
+
+    // Cover: image (with graceful fallback to placeholder) or a placeholder tile.
+    const coverInner = src
+      ? el("img", {
+          src, alt: g.name, loading: "lazy",
+          onerror: (e) => {
+            const ph = el("div", { class: "game-cover-ph", text: "🎮" });
+            e.target.replaceWith(ph);
+          },
+        })
+      : el("div", { class: "game-cover-ph", text: "🎮" });
+
+    const cover = el("div", {
+      class: "game-cover", title: "Click to set cover art",
+      onclick: () => setGameArt(g),
+    }, [coverInner, el("span", { class: "game-cover-edit", text: "🖼" })]);
+
+    const tags = [];
+    if (g.platform) tags.push(el("span", { class: "tag", text: g.platform }));
+
     list.append(
-      el("div", { class: `card ${g.status === "played" ? "played" : ""}` }, [
-        el("button", {
-          class: `game-status ${st.cls}`, title: "Click to change status", text: st.label,
-          onclick: () => { g.status = st.next; save.games(); renderGames(); updateBadges(); },
-        }),
-        el("div", { class: "card-body" }, body),
-        el("button", {
-          class: "icon-btn", title: "Delete", text: "🗑",
-          onclick: () => { games = games.filter((x) => x.id !== g.id); save.games(); renderGames(); updateBadges(); },
-        }),
+      el("div", { class: `game-card ${g.status === "played" ? "played" : ""}` }, [
+        cover,
+        el("div", { class: "game-card-info" }, [
+          el("div", { class: "card-title", text: g.name }),
+          tags.length ? el("div", { class: "card-meta" }, tags) : null,
+        ]),
+        el("div", { class: "game-card-foot" }, [
+          el("button", {
+            class: `game-status ${st.cls}`, title: "Click to change status", text: st.label,
+            onclick: () => { g.status = st.next; save.games(); renderGames(); updateBadges(); },
+          }),
+          el("button", {
+            class: "icon-btn", title: "Delete", text: "🗑",
+            onclick: () => { games = games.filter((x) => x.id !== g.id); save.games(); renderGames(); updateBadges(); },
+          }),
+        ]),
       ])
     );
   });
@@ -1913,10 +1989,15 @@ $("#game-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const name = $("#game-name").value.trim();
   if (!name) return;
+  const steamId = parseSteamId($("#game-steam").value);
+  let platform = $("#game-platform").value.trim();
+  if (steamId && !platform) platform = "Steam";
   games.push({
     id: uid(),
     name,
-    platform: $("#game-platform").value.trim(),
+    steamId,
+    cover: "",
+    platform,
     status: "want",
     createdAt: new Date().toISOString(),
   });

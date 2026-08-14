@@ -656,6 +656,42 @@ input[type="number"] { width: 80px; }
 .game-status.played { background: rgba(34,160,107,0.16); color: var(--accent); }
 .card.played .card-title { color: var(--text-muted); }
 
+/* Games as a cover-art grid */
+.game-grid {
+  display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+.game-card {
+  display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; overflow: hidden;
+  transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
+}
+.game-card:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,0.10); border-color: var(--primary); }
+.game-card.played { opacity: 0.82; }
+.game-card.played .card-title { color: var(--text-muted); }
+.game-cover {
+  position: relative; cursor: pointer; aspect-ratio: 460 / 215;
+  background: var(--surface-2); overflow: hidden;
+}
+.game-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.game-cover-ph {
+  width: 100%; height: 100%; display: grid; place-items: center; font-size: 2.6rem;
+  background: linear-gradient(135deg, var(--primary), var(--accent)); filter: saturate(0.9);
+}
+.game-cover-edit {
+  position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 8px;
+  display: grid; place-items: center; font-size: 0.9rem;
+  background: rgba(20,25,40,0.55); opacity: 0; transition: opacity 0.15s;
+}
+.game-cover:hover .game-cover-edit { opacity: 1; }
+.game-card-info { padding: 12px 14px 6px; flex: 1; }
+.game-card-info .card-title { font-weight: 700; margin-bottom: 6px; }
+.game-card-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 6px 12px 12px;
+}
+
 /* ---------- Recipe Extractor ---------- */
 .rex-panel { display: flex; flex-direction: column; gap: 12px; margin-bottom: 22px; max-width: 720px; }
 .linkbtn {
