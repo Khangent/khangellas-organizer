@@ -36,6 +36,7 @@ let reminders = store.get("org.reminders", []);
 let raids = store.get("org.raids", []);
 let recipes = store.get("org.recipes", []);
 let games = store.get("org.games", []);
+let canvasItems = store.get("org.canvas", []);
 
 const save = {
   todos: () => store.set("org.todos", todos),
@@ -45,6 +46,7 @@ const save = {
   raids: () => store.set("org.raids", raids),
   recipes: () => store.set("org.recipes", recipes),
   games: () => store.set("org.games", games),
+  canvas: () => store.set("org.canvas", canvasItems),
   callegend: () => store.set("org.callegend", calLegend),
 };
 
@@ -1144,7 +1146,7 @@ const SUPABASE_URL = "https://audcuqjwpdqeyxvjyrin.supabase.co";
 const SUPABASE_ANON =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1ZGN1cWp3cGRxZXl4dmp5cmluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY2MjA5MDgsImV4cCI6MjEwMjE5NjkwOH0.ppvvaI5queLd-Z8uKEn-OHZQ4YxiYZvMl9vnOFaObRo";
 // Everything syncs EXCEPT the AI key/chat (org.ai, org.aichat stay device-local).
-const SYNC_KEYS = ["org.todos", "org.shopping", "org.events", "org.reminders", "org.raids", "org.tcg", "org.recipes", "org.games", "org.callegend", "org.theme"];
+const SYNC_KEYS = ["org.todos", "org.shopping", "org.events", "org.reminders", "org.raids", "org.tcg", "org.recipes", "org.games", "org.canvas", "org.callegend", "org.theme"];
 const syncClientId = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 let sb = null;
@@ -1195,10 +1197,11 @@ function applyRemoteState(data) {
     tcgOwned = store.get("org.tcg", {});
     recipes = store.get("org.recipes", []);
     games = store.get("org.games", []);
+    canvasItems = store.get("org.canvas", []);
     calLegend = store.get("org.callegend", {});
     if (data["org.theme"]) applyTheme(data["org.theme"]);
     renderTodos(); renderShopping(); renderCalLegend(); renderCalendar(); renderReminders();
-    renderRaids(); renderTCG(); renderRecipes(); renderGames(); updateBadges();
+    renderRaids(); renderTCG(); renderRecipes(); renderGames(); renderCanvas(); updateBadges();
   } finally {
     syncApplying = false;
   }
@@ -1261,6 +1264,9 @@ async function onSignedIn(user) {
   updateChatAuth();
   await loadChat();
   subscribeChat();
+  // Canvas images live in Supabase Storage — (re)load them now we're authed
+  updateCanvasAuth();
+  renderCanvas();
 }
 
 async function syncSignIn(email, password) {
@@ -1280,6 +1286,8 @@ async function syncSignOut() {
   setSyncStatus("Signed out.", "");
   $("#chatw-msgs").innerHTML = "";
   updateChatAuth();
+  updateCanvasAuth();
+  renderCanvas();
 }
 
 // Hook invoked by store.set on every local change.
@@ -1826,6 +1834,230 @@ $$("#game-tabs .game-tab").forEach((b) =>
 );
 
 // ============================================================
+//  Canvas (shared freeform moodboard — images in Supabase Storage)
+// ============================================================
+const CVI_BAR = 26; // drag-bar height
+const NOTE_COLORS = ["#fff59d", "#f6a5c0", "#a5d6a7", "#90caf9"];
+let canvasZ = 1;
+const canvasUrlCache = {}; // path -> { url, exp }
+
+function canvasReady() {
+  if (!sb) { setCanvasStatus("Sync library didn't load — reload the page.", "warn"); return false; }
+  if (!syncUser) { setCanvasStatus("Sign in under “Sync” to use the canvas.", "warn"); return false; }
+  return true;
+}
+function setCanvasStatus(text, kind = "") {
+  const s = $("#canvas-status");
+  if (s) { s.textContent = text; s.className = "ai-status " + kind; }
+}
+function updateCanvasAuth() {
+  const ok = !!(sb && syncUser);
+  const hint = $("#canvas-hint");
+  if (hint) hint.hidden = ok;
+  ["#canvas-add-img", "#canvas-add-note"].forEach((sel) => { const b = $(sel); if (b) b.disabled = !ok; });
+}
+
+async function canvasImageUrl(path) {
+  if (!sb || !path) return "";
+  const now = Date.now();
+  const c = canvasUrlCache[path];
+  if (c && c.exp > now) return c.url;
+  const { data, error } = await sb.storage.from("canvas").createSignedUrl(path, 3600);
+  if (error || !data) { console.error("[canvas] sign url", error); return ""; }
+  canvasUrlCache[path] = { url: data.signedUrl, exp: now + 3300 * 1000 };
+  return data.signedUrl;
+}
+
+function imgDims(dataUrl) {
+  return new Promise((res) => {
+    const i = new Image();
+    i.onload = () => res({ w: i.naturalWidth || i.width, h: i.naturalHeight || i.height });
+    i.onerror = () => res({ w: 1, h: 1 });
+    i.src = dataUrl;
+  });
+}
+
+function canvasPlacePos() {
+  const board = $("#canvas-board");
+  const n = canvasItems.length % 6;
+  return { x: (board ? board.scrollLeft : 0) + 30 + n * 24, y: (board ? board.scrollTop : 0) + 30 + n * 24 };
+}
+
+function bringToFront(item, node) {
+  item.z = ++canvasZ;
+  node.style.zIndex = item.z;
+  save.canvas();
+}
+
+function startDrag(e, item, node) {
+  e.preventDefault();
+  bringToFront(item, node);
+  const sx = e.clientX, sy = e.clientY, ox = item.x, oy = item.y;
+  const move = (ev) => {
+    item.x = Math.max(0, ox + (ev.clientX - sx));
+    item.y = Math.max(0, oy + (ev.clientY - sy));
+    node.style.left = item.x + "px";
+    node.style.top = item.y + "px";
+  };
+  const up = () => {
+    document.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerup", up);
+    save.canvas();
+  };
+  document.addEventListener("pointermove", move);
+  document.addEventListener("pointerup", up);
+}
+
+function startResize(e, item, node) {
+  e.preventDefault();
+  e.stopPropagation();
+  bringToFront(item, node);
+  const sx = e.clientX, sy = e.clientY, ow = item.w, oh = item.h;
+  const move = (ev) => {
+    item.w = Math.max(90, ow + (ev.clientX - sx));
+    item.h = Math.max(60, oh + (ev.clientY - sy));
+    node.style.width = item.w + "px";
+    node.style.height = item.h + "px";
+  };
+  const up = () => {
+    document.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerup", up);
+    save.canvas();
+  };
+  document.addEventListener("pointermove", move);
+  document.addEventListener("pointerup", up);
+}
+
+function deleteCanvasItem(item) {
+  canvasItems = canvasItems.filter((x) => x.id !== item.id);
+  save.canvas();
+  renderCanvas();
+  if (item.type === "image" && item.path && sb) {
+    sb.storage.from("canvas").remove([item.path]).catch((err) => console.error("[canvas] remove", err));
+  }
+}
+
+function buildCanvasItem(item) {
+  const bar = el("div", { class: "cvi-bar" }, []);
+  bar.append(el("span", { class: "cvi-grip", text: "⠿" }));
+  const right = el("div", { class: "cvi-bar-right" }, []);
+  if (item.type === "note") {
+    right.append(el("button", {
+      class: "cvi-color", title: "Colour", style: `background:${item.color || NOTE_COLORS[0]}`,
+      onclick: (e) => {
+        e.stopPropagation();
+        const i = (NOTE_COLORS.indexOf(item.color) + 1) % NOTE_COLORS.length;
+        item.color = NOTE_COLORS[i];
+        save.canvas();
+        renderCanvas();
+      },
+    }));
+  }
+  right.append(el("button", {
+    class: "cvi-del", title: "Delete", text: "✕",
+    onclick: (e) => { e.stopPropagation(); deleteCanvasItem(item); },
+  }));
+  bar.append(right);
+
+  const body = el("div", { class: "cvi-body" }, []);
+  if (item.type === "image") {
+    const img = el("img", { alt: "" });
+    canvasImageUrl(item.path).then((u) => { if (u) img.src = u; });
+    body.append(img);
+    body.addEventListener("pointerdown", () => bringToFront(item, node));
+  } else {
+    body.style.background = item.color || NOTE_COLORS[0];
+    const ta = el("textarea", { class: "cvi-note", placeholder: "Note…" }, [item.text || ""]);
+    ta.addEventListener("input", () => { item.text = ta.value; save.canvas(); });
+    body.append(ta);
+  }
+
+  const resize = el("div", { class: "cvi-resize" });
+  const node = el("div", {
+    class: `cvi ${item.type}`,
+    style: `left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z || 1}`,
+  }, [bar, body, resize]);
+
+  bar.addEventListener("pointerdown", (e) => startDrag(e, item, node));
+  resize.addEventListener("pointerdown", (e) => startResize(e, item, node));
+  return node;
+}
+
+function renderCanvas() {
+  const surface = $("#canvas-surface");
+  if (!surface) return;
+  updateCanvasAuth();
+  canvasZ = canvasItems.reduce((m, i) => Math.max(m, i.z || 1), 1);
+  surface.innerHTML = "";
+  canvasItems.forEach((item) => surface.append(buildCanvasItem(item)));
+}
+
+function handleCanvasFile(file) {
+  if (!file || !file.type.startsWith("image/")) { setCanvasStatus("Only images can go on the canvas.", "warn"); return; }
+  if (!canvasReady()) return;
+  setCanvasStatus("Uploading…", "");
+  resizeImage(file, 1600, async (dataUrl) => {
+    try {
+      const blob = await (await fetch(dataUrl)).blob();
+      const path = uid() + ".jpg";
+      const { error } = await sb.storage.from("canvas").upload(path, blob, { contentType: "image/jpeg" });
+      if (error) { console.error("[canvas] upload", error); setCanvasStatus("Upload failed: " + error.message, "warn"); return; }
+      const dim = await imgDims(dataUrl);
+      const w = 260;
+      const bodyH = Math.max(80, Math.round(w / (dim.w / dim.h)));
+      const pos = canvasPlacePos();
+      canvasItems.push({ id: uid(), type: "image", path, x: pos.x, y: pos.y, w, h: bodyH + CVI_BAR, z: ++canvasZ });
+      save.canvas();
+      renderCanvas();
+      setCanvasStatus("Added ✓", "ok");
+    } catch (err) {
+      console.error("[canvas] add", err);
+      setCanvasStatus("Upload failed: " + err.message, "warn");
+    }
+  });
+}
+
+function addCanvasNote() {
+  if (!canvasReady()) return;
+  const pos = canvasPlacePos();
+  canvasItems.push({ id: uid(), type: "note", text: "", color: NOTE_COLORS[0], x: pos.x, y: pos.y, w: 200, h: 150, z: ++canvasZ });
+  save.canvas();
+  renderCanvas();
+}
+
+function initCanvas() {
+  $("#canvas-add-img").addEventListener("click", () => $("#canvas-file").click());
+  $("#canvas-file").addEventListener("change", () => {
+    const f = $("#canvas-file").files[0];
+    if (f) handleCanvasFile(f);
+    $("#canvas-file").value = "";
+  });
+  $("#canvas-add-note").addEventListener("click", addCanvasNote);
+
+  const board = $("#canvas-board");
+  board.addEventListener("dragover", (e) => e.preventDefault());
+  board.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) handleCanvasFile(f);
+  });
+  window.addEventListener("paste", (e) => {
+    const view = $("#view-canvas");
+    if (!view || !view.classList.contains("active")) return;
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const it of items) {
+      if (it.type && it.type.startsWith("image/")) {
+        const f = it.getAsFile();
+        if (f) { handleCanvasFile(f); e.preventDefault(); }
+        break;
+      }
+    }
+  });
+  updateCanvasAuth();
+}
+
+// ============================================================
 //  Init
 // ============================================================
 if (!raids.length) {
@@ -1841,11 +2073,13 @@ renderRaids();
 renderTCG();
 renderRecipes();
 renderGames();
+renderCanvas();
 initAiConfigUI();
 renderAiSuggestions();
 renderAiChat();
 updateBadges();
 initRecipes();
+initCanvas();
 initChat();
 initSync();
 refreshNotifNotice();

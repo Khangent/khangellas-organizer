@@ -576,6 +576,45 @@ input[type="number"] { width: 80px; }
 .sync-form .btn-primary { align-self: flex-start; }
 .sync-who { margin-bottom: 14px; font-size: 0.92rem; }
 
+/* ---------- Canvas (moodboard) ---------- */
+#view-canvas { max-width: none; }
+.canvas-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.canvas-board {
+  position: relative; height: 72vh; overflow: auto;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-2);
+  background-image: radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.canvas-surface { position: relative; width: 2200px; height: 1500px; }
+
+.cvi {
+  position: absolute; display: flex; flex-direction: column;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); box-shadow: var(--shadow); overflow: hidden;
+}
+.cvi-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 26px; padding: 0 6px; gap: 6px;
+  background: var(--surface-2); cursor: grab; user-select: none; touch-action: none;
+}
+.cvi-bar:active { cursor: grabbing; }
+.cvi-grip { color: var(--text-muted); font-size: 0.8rem; }
+.cvi-bar-right { display: flex; align-items: center; gap: 4px; }
+.cvi-color { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.15); cursor: pointer; padding: 0; }
+.cvi-del { border: none; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 0.8rem; padding: 2px 5px; border-radius: 5px; }
+.cvi-del:hover { background: rgba(239,68,68,0.15); color: var(--danger); }
+.cvi-body { flex: 1; overflow: hidden; display: flex; }
+.cvi.image .cvi-body { background: var(--surface-2); }
+.cvi.image img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.cvi-note { flex: 1; border: none; resize: none; background: transparent; font: inherit; font-size: 0.85rem; padding: 8px; color: #22252b; outline: none; }
+.cvi-resize {
+  position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, var(--text-muted) 50%);
+  opacity: 0.5; border-bottom-right-radius: 10px; touch-action: none;
+}
+.cvi-resize:hover { opacity: 0.9; }
+
 /* ---------- Games to Play ---------- */
 .game-tabs {
   display: inline-flex; gap: 4px; background: var(--surface-2);

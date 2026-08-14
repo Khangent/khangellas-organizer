@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Khangella's Organizer</title>
-  <link rel="stylesheet" href="styles.css?v=20" />
+  <link rel="stylesheet" href="styles.css?v=21" />
 </head>
 <body>
   <div class="app">
@@ -44,6 +44,9 @@
         <button class="menu-item" data-view="games">
           <span class="icon">🎮</span><span>Games</span>
           <span class="badge" id="badge-games"></span>
+        </button>
+        <button class="menu-item" data-view="canvas">
+          <span class="icon">🖼️</span><span>Canvas</span>
         </button>
         <button class="menu-item" data-view="ai">
           <span class="icon">✨</span><span>AI Assistant</span>
@@ -165,6 +168,24 @@
         </div>
         <div class="tcg-progress" id="tcg-progress"></div>
         <div class="tcg-grid" id="tcg-grid"></div>
+      </section>
+
+      <!-- Canvas view -->
+      <section class="view" id="view-canvas">
+        <header class="view-header">
+          <h2>Canvas</h2>
+          <p class="view-sub">A shared board — paste (Ctrl/Cmd+V), drop, or add screenshots, plus sticky notes. Drag, resize, and arrange.</p>
+        </header>
+        <div class="canvas-toolbar">
+          <button class="btn-primary" id="canvas-add-img">＋ Image</button>
+          <button class="btn-ghost" id="canvas-add-note">＋ Note</button>
+          <span class="ai-status" id="canvas-status"></span>
+          <input type="file" id="canvas-file" accept="image/*" hidden />
+        </div>
+        <div class="notice" id="canvas-hint" hidden>Sign in under “Sync” to use the shared canvas.</div>
+        <div class="canvas-board" id="canvas-board">
+          <div class="canvas-surface" id="canvas-surface"></div>
+        </div>
       </section>
 
       <!-- Games view -->
@@ -315,7 +336,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="tcg-data.js?v=20"></script>
-  <script src="app.js?v=20"></script>
+  <script src="tcg-data.js?v=21"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>
