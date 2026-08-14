@@ -576,22 +576,24 @@ function personGold(person) {
 const fmtGold = (n) => (Number(n) || 0).toLocaleString("en-US");
 const mkChar = (i) => ({ id: uid(), name: `Character ${i}`, cls: "", ilvl: "", img: "", raids: mkRaids() });
 
-// Pick + downscale a character photo, store it as a compact data URL.
-function pickCharImage(ch) {
+// Pick + downscale a photo, store it as a compact data URL, then save+rerender.
+function pickImageFor(target, maxSize) {
   const input = document.createElement("input");
   input.type = "file";
   input.accept = "image/*";
   input.addEventListener("change", () => {
     const file = input.files && input.files[0];
     if (!file) return;
-    resizeImage(file, 320, (dataUrl) => {
-      ch.img = dataUrl;
+    resizeImage(file, maxSize, (dataUrl) => {
+      target.img = dataUrl;
       save.raids();
       renderRaids();
     });
   });
   input.click();
 }
+const pickCharImage = (ch) => pickImageFor(ch, 320);
+const pickPersonImage = (person) => pickImageFor(person, 400);
 
 function resizeImage(file, maxSize, cb) {
   const reader = new FileReader();
@@ -662,8 +664,23 @@ function renderRaids() {
     const ps = raidStats(person.characters);
     const initial = (person.name || "P").trim().charAt(0).toUpperCase() || "P";
 
+    const personAvatar = el("div", {
+      class: "person-avatar", title: "Click to add or change profile photo",
+      onclick: () => pickPersonImage(person),
+    }, [
+      person.img
+        ? el("img", { src: person.img, alt: person.name })
+        : el("span", { class: "ph", text: initial }),
+    ]);
+    if (person.img) {
+      personAvatar.append(el("button", {
+        class: "char-mini-remove", title: "Remove photo", text: "✕",
+        onclick: (e) => { e.stopPropagation(); person.img = ""; save.raids(); renderRaids(); },
+      }));
+    }
+
     const head = el("div", { class: "person-head" }, [
-      el("span", { class: "person-avatar", text: initial }),
+      personAvatar,
       el("input", {
         class: "person-name", value: person.name, placeholder: "Player name",
         onchange: (e) => { person.name = e.target.value; save.raids(); renderRaids(); },
