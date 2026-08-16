@@ -1242,8 +1242,10 @@ $("#ai-clear").addEventListener("click", () => {
 const SUPABASE_URL = "https://audcuqjwpdqeyxvjyrin.supabase.co";
 const SUPABASE_ANON =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1ZGN1cWp3cGRxZXl4dmp5cmluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY2MjA5MDgsImV4cCI6MjEwMjE5NjkwOH0.ppvvaI5queLd-Z8uKEn-OHZQ4YxiYZvMl9vnOFaObRo";
-// Everything syncs EXCEPT the AI key/chat (org.ai, org.aichat stay device-local).
-const SYNC_KEYS = ["org.todos", "org.shopping", "org.events", "org.reminders", "org.raids", "org.tcg", "org.recipes", "org.games", "org.canvas", "org.callegend", "org.theme"];
+// Everything syncs, incl. the AI config (org.ai: endpoint + key + model) so the
+// AI Assistant works on every signed-in device. Only the AI chat history
+// (org.aichat) and per-device nickname stay local.
+const SYNC_KEYS = ["org.todos", "org.shopping", "org.events", "org.reminders", "org.raids", "org.tcg", "org.recipes", "org.games", "org.canvas", "org.callegend", "org.theme", "org.ai"];
 const syncClientId = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 let sb = null;
@@ -1296,6 +1298,7 @@ function applyRemoteState(data) {
     games = store.get("org.games", []);
     canvasItems = store.get("org.canvas", []);
     calLegend = store.get("org.callegend", {});
+    if ("org.ai" in data) { aiCfg = { ...AI_DEFAULTS, ...store.get("org.ai", {}) }; initAiConfigUI(); }
     if (data["org.theme"]) applyTheme(data["org.theme"]);
     renderTodos(); renderShopping(); renderCalLegend(); renderCalendar(); renderReminders();
     renderRaids(); renderTCG(); renderRecipes(); renderGames(); renderCanvas(); updateBadges();
