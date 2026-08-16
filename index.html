@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icon-180.png?v=24" />
   <link rel="manifest" href="manifest.webmanifest?v=24" />
   <meta name="theme-color" content="#ec4899" />
-  <link rel="stylesheet" href="styles.css?v=26" />
+  <link rel="stylesheet" href="styles.css?v=27" />
 </head>
 <body>
   <div class="app">
@@ -260,11 +260,12 @@
               <select id="ai-model"></select>
             </label>
             <label>Endpoint (advanced)
-              <input type="text" id="ai-base" />
+              <input type="text" id="ai-base" placeholder="https://your-ai-proxy.workers.dev" />
+              <span class="ai-field-hint">Direct calls to aikeys are blocked by the browser (CORS). Point this at your CORS relay (see <code>ai-cors-proxy.js</code>).</span>
             </label>
             <div class="ai-config-actions">
               <button class="btn-primary" id="ai-save">Save settings</button>
-              <span class="ai-hint">🔒 Your key is stored only in this browser and is never uploaded or committed to GitHub.</span>
+              <span class="ai-hint">🔒 Your key is kept in this browser and synced only to your own signed-in devices via your private Supabase — never uploaded to GitHub.</span>
             </div>
           </div>
         </details>
@@ -342,7 +343,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="tcg-data.js?v=26"></script>
-  <script src="app.js?v=26"></script>
+  <script src="tcg-data.js?v=27"></script>
+  <script src="app.js?v=27"></script>
 </body>
 </html>

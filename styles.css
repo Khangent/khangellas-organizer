@@ -547,6 +547,8 @@ input[type="number"] { width: 80px; }
 .ai-config-body label { display: flex; flex-direction: column; gap: 5px; font-size: 0.85rem; font-weight: 500; color: var(--text-muted); }
 .ai-config-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .ai-hint { font-size: 0.78rem; color: var(--text-muted); }
+.ai-field-hint { font-size: 0.72rem; font-weight: 400; color: var(--text-muted); line-height: 1.4; }
+.ai-field-hint code { background: var(--surface-2); padding: 1px 5px; border-radius: 5px; font-size: 0.95em; }
 
 .ai-chat {
   min-height: 240px; max-height: 52vh; overflow-y: auto;
