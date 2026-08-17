@@ -47,3 +47,11 @@ login) — the GitHub repo is public, so **no secrets are ever committed**.
 ## Skills
 Reusable procedures live in `.claude/skills/<name>/SKILL.md` (auto-discovered):
 - **deploy** — bump `?v=`, run tests, commit, push, and confirm the Pages build is live.
+
+## Subagents
+One feature-scoped subagent per feature lives in `.claude/agents/*-feature.md`
+(auto-discovered). Delegate a task to the matching agent — each already knows that feature's
+state var, render fn, view id, data model, and sync key: `todos`, `shopping`, `calendar`,
+`reminders`, `raids`, `tcg`, `recipes`, `games`, `canvas`, `ai`, `sync`, `chat`. `sync`
+underpins `canvas` + `chat`; changes that must sync also go through `sync` (SYNC_KEYS +
+applyRemoteState).
