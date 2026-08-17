@@ -31,8 +31,17 @@ Each feature re-renders its list from state: mutate state → `save.x()` → `re
 5. **Init:** call `renderX()` (and any `initX()`) in the Init block at the bottom of `app.js`.
 6. **Sync (optional):** to sync across devices, add `"org.x"` to `SYNC_KEYS` **and** load it
    in `applyRemoteState`.
-7. **Ship:** bump `?v=` in `index.html`, `npm test`, commit, push (see
+7. **Subagent (required):** add `.claude/agents/x-feature.md` following the existing
+   template (name, a "Use for…" description with trigger words, and a body covering the
+   view id, state var + `save` key, render/init fns, key DOM ids, data model, sync-key
+   membership, and gotchas). Add it to the subagent list in `Instruction.md`. **Every new
+   feature gets its own subagent.**
+8. **Ship:** bump `?v=` in `index.html`, `npm test`, commit, push (see
    [workflow.md](workflow.md)).
+
+**Keep subagents current:** whenever a feature's state var, render fn, DOM ids, data model,
+or sync behaviour changes, update that feature's `.claude/agents/*-feature.md` in the same
+change — a stale agent misguides future edits.
 
 ## Don'ts
 - Don't add a build step or npm **runtime** dependencies without a deliberate decision.
