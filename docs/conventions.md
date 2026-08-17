@@ -23,6 +23,10 @@ Each feature re-renders its list from state: mutate state → `save.x()` → `re
   key (safe to expose) is in source. The repo is public — nothing sensitive is committed.
 
 ## Adding a feature or view (follow the existing pattern)
+0. **Research + plan first (required):** before touching code, research the relevant areas
+   and write a plan to `docs/agents/research/` and `docs/agents/plans/` (`.md`), then **get
+   explicit user confirmation**. Only implement once the plan is approved. (RPI skills:
+   `rpi-research` → `rpi-plan` → `rpi-implement`.)
 1. **State:** `let x = store.get("org.x", default)` and `save.x = () => store.set("org.x", x)`.
 2. **View:** add `<section class="view" id="view-x">` in `index.html` **and** a matching
    `<button class="menu-item" data-view="x">` in the sidebar (the test enforces this pair).

@@ -20,6 +20,11 @@ A couple's shared hub that works offline-first (localStorage is the source of tr
 login) — the GitHub repo is public, so **no secrets are ever committed**.
 
 ## How (the essentials)
+- **Research → plan → confirm → implement (required):** for any feature or non-trivial
+  change, research first and write a plan to `docs/agents/research/` + `docs/agents/plans/`
+  (`.md`), then **wait for explicit user confirmation before editing code**. Pure ops
+  (deploy/commit) and trivial one-line fixes are exempt; when in doubt, plan first. The RPI
+  skills (`rpi-research`, `rpi-plan`, `rpi-implement`) drive this loop.
 - **Run:** `python3 -m http.server 8000` → http://localhost:8000 (static, no build).
 - **Verify:** `npm test` (== `node test/run.mjs`) must be green, then browser-smoke the
   affected view. **Run tests + cross-check features after every major commit.**
