@@ -45,5 +45,5 @@ login) — the GitHub repo is public, so **no secrets are ever committed**.
   full deploy / GitHub Pages procedure.
 
 ## Skills
-Reusable procedures live in `.agents/skills/<name>/SKILL.md`:
+Reusable procedures live in `.claude/skills/<name>/SKILL.md` (auto-discovered):
 - **deploy** — bump `?v=`, run tests, commit, push, and confirm the Pages build is live.
