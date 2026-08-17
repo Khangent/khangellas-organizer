@@ -43,3 +43,7 @@ login) — the GitHub repo is public, so **no secrets are ever committed**.
   pattern for adding a feature or view.
 - **[docs/workflow.md](docs/workflow.md)** — running, the test harness in detail, and the
   full deploy / GitHub Pages procedure.
+
+## Skills
+Reusable procedures live in `.agents/skills/<name>/SKILL.md`:
+- **deploy** — bump `?v=`, run tests, commit, push, and confirm the Pages build is live.
