@@ -1963,6 +1963,7 @@ let canvasClip = [];             // in-app clipboard (copied item snapshots)
 let canvasSpace = false;         // is the space bar held (pan gesture)?
 let canvasViewTimer = null;
 const canvasNodes = new Map();   // id -> DOM node (rebuilt each render)
+const canvasEdgeEls = new Map(); // connector id -> <path> (rebuilt each render)
 
 // Undo/redo — per-device, in-memory snapshots of canvasItems.
 const HIST_MAX = 80;
@@ -2005,6 +2006,22 @@ function computeSnap(box, others, threshold) {
     others.forEach((o) => { const oy = [o.y, o.y + o.h / 2, o.y + o.h]; sy.forEach((s) => oy.forEach((t) => { if (Math.abs(t - s) < 0.5) hlines.push(s); })); });
   }
   return { dx, dy, vlines: [...new Set(vlines)], hlines: [...new Set(hlines)] };
+}
+// Point on a box's border along the line from its centre toward (tx,ty). (unit-tested)
+function edgePoint(rect, tx, ty) {
+  const cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
+  const dx = tx - cx, dy = ty - cy;
+  if (!dx && !dy) return { x: cx, y: cy };
+  const hw = rect.w / 2, hh = rect.h / 2;
+  const scale = 1 / Math.max(Math.abs(dx) / hw, Math.abs(dy) / hh);
+  return { x: cx + dx * scale, y: cy + dy * scale };
+}
+// el() builds HTML; SVG needs its own namespace.
+const SVGNS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs = {}) {
+  const n = document.createElementNS(SVGNS, tag);
+  Object.entries(attrs).forEach(([k, v]) => n.setAttribute(k, v));
+  return n;
 }
 
 function canvasReady() {
@@ -2086,9 +2103,10 @@ function zoomAtCenter(factor) {
 // Frame all items (or reset when empty).
 function fitCanvas() {
   const r = boardRect();
-  if (!canvasItems.length) { canvasView = { panX: 0, panY: 0, zoom: 1 }; applyViewTransform(); saveCanvasView(); return; }
+  const boxes = canvasItems.filter((i) => i.type !== "connector");
+  if (!boxes.length) { canvasView = { panX: 0, panY: 0, zoom: 1 }; applyViewTransform(); saveCanvasView(); return; }
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  canvasItems.forEach((i) => {
+  boxes.forEach((i) => {
     minX = Math.min(minX, i.x); minY = Math.min(minY, i.y);
     maxX = Math.max(maxX, i.x + i.w); maxY = Math.max(maxY, i.y + i.h);
   });
@@ -2127,6 +2145,7 @@ function updateSelClasses() {
     node.classList.toggle("selected", on);
     node.classList.toggle("single", on && single);
   });
+  canvasEdgeEls.forEach((p, id) => p.classList.toggle("selected", canvasSel.has(id)));
 }
 function selectOnly(id) { canvasSel = new Set(id ? [id] : []); updateSelClasses(); }
 function toggleSelect(id) { if (canvasSel.has(id)) canvasSel.delete(id); else canvasSel.add(id); updateSelClasses(); }
@@ -2171,18 +2190,18 @@ function bringToFront(item, node) {
 
 // --- Drag / resize (world-aware, multi-select + snapping) ---
 function startItemDrag(e, item, node) {
-  if (e.target.closest(".cvi-resize") || e.target.closest(".cvi-tools")) return; // handled elsewhere
+  if (e.target.closest(".cvi-resize") || e.target.closest(".cvi-tools") || e.target.closest(".cvi-connect")) return; // handled elsewhere
   if (canvasSpace || e.button === 1) return;                    // let the board pan instead
   if ((item.type === "note" || item.type === "text") && node.classList.contains("editing")) return; // editing text
   e.stopPropagation();
   if (e.shiftKey) { toggleSelect(item.id); return; }            // shift-click toggles, no drag
   if (!canvasSel.has(item.id)) selectOnly(item.id);             // clicking outside the selection resets it
   bringToFront(item, node);
-  const starts = selectedItems().map((it) => ({ it, ox: it.x, oy: it.y }));
+  const starts = selectedItems().filter((it) => it.type !== "connector").map((it) => ({ it, ox: it.x, oy: it.y }));
   let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
   starts.forEach((s) => { bx0 = Math.min(bx0, s.ox); by0 = Math.min(by0, s.oy); bx1 = Math.max(bx1, s.ox + s.it.w); by1 = Math.max(by1, s.oy + s.it.h); });
   const base = { x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 };
-  const others = canvasItems.filter((x) => !canvasSel.has(x.id));
+  const others = canvasItems.filter((x) => !canvasSel.has(x.id) && x.type !== "connector");
   const sx = e.clientX, sy = e.clientY;
   let moved = false;
   const move = (ev) => {
@@ -2199,6 +2218,7 @@ function startItemDrag(e, item, node) {
       if (n) { n.style.left = s.it.x + "px"; n.style.top = s.it.y + "px"; }
     });
     drawGuides(snap.vlines, snap.hlines);
+    redrawEdges();
   };
   const up = () => {
     document.removeEventListener("pointermove", move);
@@ -2224,6 +2244,7 @@ function startResize(e, item, node) {
     item.h = Math.max(60, Math.round(oh + (ev.clientY - sy) / canvasView.zoom));
     node.style.width = item.w + "px";
     node.style.height = item.h + "px";
+    redrawEdges();
   };
   const up = () => {
     document.removeEventListener("pointermove", move);
@@ -2244,6 +2265,7 @@ function enterNoteEdit(item, node) {
 }
 
 function duplicateItems(items) {
+  items = items.filter((it) => it.type !== "connector"); // connectors follow their endpoints
   if (!items.length) return;
   beginChange();
   const ids = [];
@@ -2260,7 +2282,8 @@ function deleteItems(items) {
   beginChange();
   const ids = new Set(items.map((x) => x.id));
   const paths = items.filter((x) => x.type === "image" && x.path).map((x) => x.path);
-  canvasItems = canvasItems.filter((x) => !ids.has(x.id));
+  // Drop the items AND any connector attached to one of them.
+  canvasItems = canvasItems.filter((x) => !ids.has(x.id) && !(x.type === "connector" && (ids.has(x.from) || ids.has(x.to))));
   ids.forEach((id) => canvasSel.delete(id));
   save.canvas();
   // Only drop a Storage object if no remaining item still references that path.
@@ -2272,7 +2295,7 @@ function deleteItems(items) {
 function deleteCanvasItem(item) { deleteItems([item]); }
 
 function copyCanvasSelection() {
-  const items = selectedItems();
+  const items = selectedItems().filter((it) => it.type !== "connector");
   if (!items.length) return;
   canvasClip = items.map((it) => ({ type: it.type, path: it.path, text: it.text, color: it.color, x: it.x, y: it.y, w: it.w, h: it.h }));
   setCanvasStatus(`Copied ${items.length} item${items.length === 1 ? "" : "s"}`, "ok");
@@ -2330,16 +2353,80 @@ function buildCanvasItem(item) {
     onclick: (e) => { e.stopPropagation(); deleteCanvasItem(item); } }));
 
   const resize = el("div", { class: "cvi-resize", title: "Drag to resize" });
+  const connect = el("div", { class: "cvi-connect", title: "Drag to another item to connect" });
   const sel = canvasSel.has(item.id);
   const node = el("div", {
     class: `cvi ${item.type}${sel ? " selected" : ""}${sel && canvasSel.size === 1 ? " single" : ""}`,
     style: `left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z || 1}`,
-  }, [body, tools, resize]);
+  }, [body, tools, resize, connect]);
 
   node.addEventListener("pointerdown", (e) => startItemDrag(e, item, node));
   resize.addEventListener("pointerdown", (e) => startResize(e, item, node));
+  connect.addEventListener("pointerdown", (e) => startConnect(e, item));
   canvasNodes.set(item.id, node);
   return node;
+}
+
+// --- Connectors (arrows between items) ---
+function buildEdges(surface) {
+  canvasEdgeEls.clear();
+  const svg = svgEl("svg", { class: "cvi-edges" });
+  const defs = svgEl("defs");
+  const marker = svgEl("marker", { id: "cvi-arrow", viewBox: "0 0 10 10", refX: "8.5", refY: "5", markerWidth: "7", markerHeight: "7", orient: "auto-start-reverse" });
+  marker.append(svgEl("path", { d: "M0,0 L10,5 L0,10 z", class: "cvi-arrowhead" }));
+  defs.append(marker);
+  svg.append(defs);
+  canvasItems.filter((x) => x.type === "connector").forEach((c) => {
+    const path = svgEl("path", { class: "cvi-edge", "marker-end": "url(#cvi-arrow)" });
+    path.addEventListener("pointerdown", (e) => { e.stopPropagation(); selectOnly(c.id); });
+    svg.append(path);
+    canvasEdgeEls.set(c.id, path);
+  });
+  surface.append(svg);
+}
+function redrawEdges() {
+  canvasEdgeEls.forEach((path, id) => {
+    const c = canvasItems.find((x) => x.id === id);
+    const a = c && canvasItems.find((x) => x.id === c.from);
+    const b = c && canvasItems.find((x) => x.id === c.to);
+    if (!a || !b) { path.setAttribute("d", ""); return; }
+    const p1 = edgePoint(a, b.x + b.w / 2, b.y + b.h / 2);
+    const p2 = edgePoint(b, a.x + a.w / 2, a.y + a.h / 2);
+    path.setAttribute("d", `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`);
+    path.classList.toggle("selected", canvasSel.has(id));
+  });
+}
+// Drag from a selected item's connect handle onto another item to create an arrow.
+function startConnect(e, item) {
+  e.preventDefault();
+  e.stopPropagation();
+  const r = boardRect();
+  const svg = $(".cvi-edges");
+  const temp = svgEl("path", { class: "cvi-edge temp", "marker-end": "url(#cvi-arrow)" });
+  if (svg) svg.append(temp);
+  const move = (ev) => {
+    const w = screenToWorld(ev.clientX, ev.clientY, r.left, r.top, canvasView);
+    const p1 = edgePoint(item, w.x, w.y);
+    temp.setAttribute("d", `M ${p1.x} ${p1.y} L ${w.x} ${w.y}`);
+  };
+  const up = (ev) => {
+    document.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerup", up);
+    temp.remove();
+    const w = screenToWorld(ev.clientX, ev.clientY, r.left, r.top, canvasView);
+    const target = canvasItems.filter((x) => x.type !== "connector")
+      .reverse().find((x) => w.x >= x.x && w.x <= x.x + x.w && w.y >= x.y && w.y <= x.y + x.h);
+    if (target && target.id !== item.id &&
+        !canvasItems.some((x) => x.type === "connector" && x.from === item.id && x.to === target.id)) {
+      beginChange();
+      canvasItems.push({ id: uid(), type: "connector", from: item.id, to: target.id, z: 0 });
+      save.canvas();
+      renderCanvas();
+      setCanvasStatus("Connected", "ok");
+    }
+  };
+  document.addEventListener("pointermove", move);
+  document.addEventListener("pointerup", up);
 }
 
 function renderCanvas() {
@@ -2349,7 +2436,9 @@ function renderCanvas() {
   canvasZ = canvasItems.reduce((m, i) => Math.max(m, i.z || 1), 1);
   canvasNodes.clear();
   surface.innerHTML = "";
-  canvasItems.forEach((item) => surface.append(buildCanvasItem(item)));
+  canvasItems.filter((it) => it.type !== "connector").forEach((item) => surface.append(buildCanvasItem(item)));
+  buildEdges(surface);
+  redrawEdges();
   applyViewTransform();
 }
 
@@ -2444,11 +2533,12 @@ function onCanvasKeyDown(e) {
     const s = e.shiftKey ? 10 : 1;
     const dx = e.key === "ArrowLeft" ? -s : e.key === "ArrowRight" ? s : 0;
     const dy = e.key === "ArrowUp" ? -s : e.key === "ArrowDown" ? s : 0;
-    items.forEach((it) => {
+    items.filter((it) => it.type !== "connector").forEach((it) => {
       it.x += dx; it.y += dy;
       const node = canvasNodes.get(it.id);
       if (node) { node.style.left = it.x + "px"; node.style.top = it.y + "px"; }
     });
+    redrawEdges();
     save.canvas();
   }
 }
@@ -2502,7 +2592,7 @@ function initCanvas() {
       box.style.width = (w * canvasView.zoom) + "px";
       box.style.height = (h * canvasView.zoom) + "px";
       const marq = { x, y, w, h };
-      const hit = canvasItems.filter((it) => rectsOverlap(marq, it)).map((it) => it.id);
+      const hit = canvasItems.filter((it) => it.type !== "connector" && rectsOverlap(marq, it)).map((it) => it.id);
       canvasSel = additive ? new Set([...base, ...hit]) : new Set(hit);
       updateSelClasses();
     };

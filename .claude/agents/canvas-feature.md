@@ -36,10 +36,16 @@ shipped; Phases 2–3 pending).
   `#canvas-file`, `#canvas-status`, `#canvas-hint`, the overlay `#canvas-guides` (holds
   alignment guides + the marquee), and the zoom bar
   `#canvas-zoom-in`/`#canvas-zoom-out`/`#canvas-zoom-pct`/`#canvas-fit`.
-- **Data model:** item `{ id, type: "image"|"note"|"text"|"shape", x, y, w, h, z, ... }` —
-  image: `path`; note: `text`+`color`; text: `text` (transparent, no chrome); shape:
-  `shape:"rect"|"ellipse"`+`fill`. Positions are world coords. New types are additive to
-  `org.canvas` (no migration).
+- **Data model:** item `{ id, type, x, y, w, h, z, ... }` where type ∈ image (`path`) ·
+  note (`text`+`color`) · text (`text`, transparent) · shape (`shape:"rect"|"ellipse"`+
+  `fill`) · **connector (`from`,`to` item ids — no geometry; drawn as an SVG arrow)**.
+  Positions are world coords. All additive to `org.canvas` (no migration).
+- **Connectors:** SVG overlay `.cvi-edges` inside `#canvas-surface` (built by `buildEdges`,
+  paths updated by `redrawEdges` on render + drag/resize/nudge). Create by dragging an item's
+  `.cvi-connect` handle onto another (`startConnect`); endpoints via pure `edgePoint`
+  (unit-tested). Deleting a box cascades to its connectors. Connectors are **excluded** from
+  drag/resize/marquee/group-move/duplicate/nudge/fit/copy (guard `type !== "connector"`).
+  `el()` can't build SVG — use `svgEl` (`createElementNS`).
 - **Undo/redo:** per-device, in-memory snapshot stacks `canvasPast`/`canvasFuture`.
   `beginChange(tag?)` snapshots BEFORE a mutation (call it in any new mutating action; `tag`
   coalesces a repeated gesture like arrow-nudge); `undoCanvas`/`redoCanvas` (⌘/Ctrl+Z /
@@ -61,8 +67,8 @@ shipped; Phases 2–3 pending).
   `applyViewTransform(); saveCanvasView();`.
 - Depends on **sync-feature** for the Supabase client `sb` — coordinate on auth/Storage.
 - Built so far: pan/zoom + select (P1); multi-select/marquee/snapping/palette/copy-paste
-  (P2); **text elements, shapes (rect/ellipse), and undo/redo** (P3a). **Not yet built**:
-  connectors/arrows, minimap, pinch/touch (later Phase 3 follow-ups).
+  (P2); text/shapes/undo-redo (P3a); **connectors/arrows** (P3b). **Not yet built**:
+  minimap, pinch/touch (later follow-ups).
 - When adding any new mutating action, call `beginChange()` first so undo captures it.
 - Served-asset change → bump `?v=`, `npm test`, ship via the `deploy` skill.
 

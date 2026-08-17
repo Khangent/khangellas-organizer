@@ -639,6 +639,22 @@ input[type="number"] { width: 80px; }
 /* Keep the selection outline visible on the chrome-less items */
 .cvi.text.selected, .cvi.shape.selected { box-shadow: 0 0 0 2px var(--primary); }
 
+/* Connectors (SVG arrows between items) */
+.cvi-edges { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; pointer-events: none; }
+.cvi-edge { fill: none; stroke: var(--text-muted); stroke-width: 2; pointer-events: stroke; cursor: pointer; }
+.cvi-edge:hover { stroke: var(--primary); }
+.cvi-edge.selected { stroke: var(--primary); stroke-width: 3; }
+.cvi-edge.temp { stroke: var(--primary); stroke-dasharray: 5 4; pointer-events: none; }
+.cvi-arrowhead { fill: var(--text-muted); fill: context-stroke; }
+
+/* Connect handle — shown on a single-selected item; drag onto another item */
+.cvi-connect {
+  position: absolute; top: -7px; right: -7px; width: 13px; height: 13px;
+  background: var(--primary); border: 2px solid var(--surface); border-radius: 50%;
+  cursor: crosshair; display: none;
+}
+.cvi.single .cvi-connect { display: block; }
+
 /* Per-item floating toolbar — only while selected */
 .cvi-tools {
   position: absolute; top: -36px; right: 0; display: none; gap: 3px;

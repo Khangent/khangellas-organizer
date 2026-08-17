@@ -130,6 +130,7 @@ function runApp() {
   const documentStub = {
     documentElement: makeEl(),
     createElement: () => makeEl(),
+    createElementNS: () => makeEl(),
     createTextNode: () => makeEl(),
     querySelector: () => makeEl(),
     querySelectorAll: () => [],
@@ -138,7 +139,7 @@ function runApp() {
   const windowStub = { addEventListener() {}, removeEventListener() {} };
   const noop = () => {};
   const exportsTail =
-    "\n;return {num,round1,macroTotals,kcalOf,parseSteamId,personGold,raidStats,fmtGold,GAME_STATUS,PRIORITY_RANK,mkIngredient,GAME_ORDER,clampZoom,screenToWorld,worldToScreen,rectsOverlap,computeSnap,pushCapped};";
+    "\n;return {num,round1,macroTotals,kcalOf,parseSteamId,personGold,raidStats,fmtGold,GAME_STATUS,PRIORITY_RANK,mkIngredient,GAME_ORDER,clampZoom,screenToWorld,worldToScreen,rectsOverlap,computeSnap,pushCapped,edgePoint};";
   // eslint-disable-next-line no-new-func
   const factory = new Function(
     "window", "document", "localStorage", "alert", "confirm", "prompt", "console",
@@ -168,7 +169,7 @@ if (!api) {
   check("unit tests", () => assert(false, "skipped — app.js failed to load"));
 } else {
   const { num, round1, macroTotals, kcalOf, parseSteamId, personGold, raidStats, fmtGold,
-          clampZoom, screenToWorld, worldToScreen, rectsOverlap, computeSnap, pushCapped } = api;
+          clampZoom, screenToWorld, worldToScreen, rectsOverlap, computeSnap, pushCapped, edgePoint } = api;
 
   check("num() coerces only positive finite numbers", () => {
     eq(num("5"), 5); eq(num("2.5"), 2.5); eq(num("abc"), 0); eq(num("-3"), 0);
@@ -220,6 +221,12 @@ if (!api) {
   check("pushCapped() bounds the undo history", () => {
     eq(pushCapped([1, 2, 3], 4, 3), [2, 3, 4]); // drops oldest at cap
     eq(pushCapped([1], 2, 5), [1, 2]);          // under cap keeps all
+  });
+  check("edgePoint() projects onto the box border toward a target", () => {
+    const box = { x: 0, y: 0, w: 100, h: 100 };
+    eq(edgePoint(box, 200, 50), { x: 100, y: 50 }); // right of box -> right-edge midpoint
+    eq(edgePoint(box, 50, 200), { x: 50, y: 100 }); // below box  -> bottom-edge midpoint
+    eq(edgePoint(box, 50, 50), { x: 50, y: 50 });   // target at centre -> centre
   });
 }
 
