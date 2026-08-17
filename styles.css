@@ -605,7 +605,7 @@ input[type="number"] { width: 80px; }
   background: var(--surface-2);
   background-image: radial-gradient(var(--border) 1.2px, transparent 1.2px);
   background-size: 22px 22px; background-position: 0 0;
-  cursor: grab; touch-action: none;
+  cursor: grab; touch-action: none; user-select: none;
 }
 .canvas-board.panning { cursor: grabbing; }
 /* Zero-size origin plane; items are positioned in world coords and the plane is transformed. */
@@ -633,7 +633,7 @@ input[type="number"] { width: 80px; }
   background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
   padding: 3px; box-shadow: var(--shadow);
 }
-.cvi.selected .cvi-tools { display: flex; }
+.cvi.single .cvi-tools { display: flex; }
 .cvi-tool {
   border: none; background: transparent; cursor: pointer; font-size: 0.95rem;
   line-height: 1; padding: 4px 7px; border-radius: 6px;
@@ -647,7 +647,7 @@ input[type="number"] { width: 80px; }
   background: var(--surface); border: 2px solid var(--primary); border-radius: 4px;
   cursor: nwse-resize; display: none; touch-action: none;
 }
-.cvi.selected .cvi-resize { display: block; }
+.cvi.single .cvi-resize { display: block; }
 
 /* Floating zoom bar */
 .canvas-zoombar {
@@ -661,6 +661,26 @@ input[type="number"] { width: 80px; }
 }
 .canvas-zoombar button:hover { background: var(--surface-2); }
 #canvas-zoom-pct { font-variant-numeric: tabular-nums; min-width: 50px; font-size: 0.85rem; }
+
+/* Overlay for alignment guides + marquee (not transformed, so lines stay crisp) */
+#canvas-guides { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 15; }
+.cvi-guide { position: absolute; background: var(--primary); opacity: 0.9; }
+.cvi-guide.v { top: 0; bottom: 0; width: 1px; }
+.cvi-guide.h { left: 0; right: 0; height: 1px; }
+.canvas-marquee {
+  position: absolute; border: 1px solid var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent); pointer-events: none;
+}
+
+/* Note colour palette popover */
+.cvi-color-wrap { position: relative; display: inline-flex; }
+.cvi-palette {
+  position: absolute; top: calc(100% + 6px); right: 0; display: none;
+  grid-template-columns: repeat(4, 18px); gap: 6px; padding: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 9px; box-shadow: var(--shadow);
+}
+.cvi-palette.open { display: grid; }
+.cvi-swatch { width: 18px; height: 18px; border-radius: 5px; border: 1px solid rgba(0,0,0,0.15); cursor: pointer; padding: 0; }
 
 /* ---------- Games to Play ---------- */
 .game-tabs {

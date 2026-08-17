@@ -138,7 +138,7 @@ function runApp() {
   const windowStub = { addEventListener() {}, removeEventListener() {} };
   const noop = () => {};
   const exportsTail =
-    "\n;return {num,round1,macroTotals,kcalOf,parseSteamId,personGold,raidStats,fmtGold,GAME_STATUS,PRIORITY_RANK,mkIngredient,GAME_ORDER,clampZoom,screenToWorld,worldToScreen};";
+    "\n;return {num,round1,macroTotals,kcalOf,parseSteamId,personGold,raidStats,fmtGold,GAME_STATUS,PRIORITY_RANK,mkIngredient,GAME_ORDER,clampZoom,screenToWorld,worldToScreen,rectsOverlap,computeSnap};";
   // eslint-disable-next-line no-new-func
   const factory = new Function(
     "window", "document", "localStorage", "alert", "confirm", "prompt", "console",
@@ -168,7 +168,7 @@ if (!api) {
   check("unit tests", () => assert(false, "skipped — app.js failed to load"));
 } else {
   const { num, round1, macroTotals, kcalOf, parseSteamId, personGold, raidStats, fmtGold,
-          clampZoom, screenToWorld, worldToScreen } = api;
+          clampZoom, screenToWorld, worldToScreen, rectsOverlap, computeSnap } = api;
 
   check("num() coerces only positive finite numbers", () => {
     eq(num("5"), 5); eq(num("2.5"), 2.5); eq(num("abc"), 0); eq(num("-3"), 0);
@@ -204,6 +204,18 @@ if (!api) {
     eq(worldToScreen(30, 40, 10, 20, view), { x: 170, y: 150 });
     eq(screenToWorld(170, 150, 10, 20, view), { x: 30, y: 40 });
     eq(screenToWorld(42, 7, 0, 0, { panX: 0, panY: 0, zoom: 1 }), { x: 42, y: 7 });
+  });
+  check("rectsOverlap() detects intersection (edge-touch = no overlap)", () => {
+    eq(rectsOverlap({ x: 0, y: 0, w: 10, h: 10 }, { x: 5, y: 5, w: 10, h: 10 }), true);
+    eq(rectsOverlap({ x: 0, y: 0, w: 10, h: 10 }, { x: 20, y: 0, w: 5, h: 5 }), false);
+    eq(rectsOverlap({ x: 0, y: 0, w: 10, h: 10 }, { x: 10, y: 0, w: 5, h: 5 }), false);
+  });
+  check("computeSnap() snaps a near edge and reports guides", () => {
+    const others = [{ x: 100, y: 0, w: 50, h: 50 }];
+    const s = computeSnap({ x: 96, y: 200, w: 40, h: 40 }, others, 6); // left edge 96 -> 100
+    eq(s.dx, 4);
+    eq(s.vlines.includes(100), true);
+    eq(computeSnap({ x: 70, y: 200, w: 40, h: 40 }, others, 6).dx, 0); // out of threshold
   });
 }
 

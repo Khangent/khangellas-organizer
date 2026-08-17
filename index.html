@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icon-180.png?v=24" />
   <link rel="manifest" href="manifest.webmanifest?v=24" />
   <meta name="theme-color" content="#ec4899" />
-  <link rel="stylesheet" href="styles.css?v=30" />
+  <link rel="stylesheet" href="styles.css?v=31" />
 </head>
 <body>
   <div class="app">
@@ -186,11 +186,12 @@
           <button class="btn-ghost" id="canvas-add-img">＋ Image</button>
           <span class="ai-status" id="canvas-status"></span>
           <input type="file" id="canvas-file" accept="image/*" hidden />
-          <span class="canvas-hint-inline">Scroll = pan · ⌘/Ctrl+scroll = zoom · Space+drag = pan</span>
+          <span class="canvas-hint-inline">Scroll = pan · ⌘/Ctrl+scroll = zoom · drag empty = select · Shift-click = multi</span>
         </div>
         <div class="notice" id="canvas-hint" hidden>Sign in under “Sync” to use the shared canvas.</div>
         <div class="canvas-board" id="canvas-board">
           <div class="canvas-surface" id="canvas-surface"></div>
+          <div class="canvas-guides" id="canvas-guides"></div>
           <div class="canvas-zoombar">
             <button id="canvas-zoom-out" title="Zoom out">−</button>
             <button id="canvas-zoom-pct" title="Reset to 100%">100%</button>
@@ -338,7 +339,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="tcg-data.js?v=30"></script>
-  <script src="app.js?v=30"></script>
+  <script src="tcg-data.js?v=31"></script>
+  <script src="app.js?v=31"></script>
 </body>
 </html>

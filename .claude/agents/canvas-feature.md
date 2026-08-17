@@ -18,15 +18,23 @@ shipped; Phases 2–3 pending).
   `saveCanvasView()` (debounced).
 - **Render:** `renderCanvas()` rebuilds nodes; `buildCanvasItem()`; `applyViewTransform()`
   applies `translate()+scale()` to `#canvas-surface` and rescales the board grid + zoom %.
-- **Interaction:** `startItemDrag` (drag body; threshold; click-on-note → `enterNoteEdit`),
-  `startResize` (on-select handle), pan/zoom via `panBy`/`zoomAt`/`zoomAtCenter`/`fitCanvas`,
-  selection `selectCanvasItem`/`clearCanvasSelection`, `duplicateCanvasItem`,
-  `deleteCanvasItem`, keyboard `onCanvasKeyDown` (Del/Backspace, ⌘/Ctrl+D, arrows, Esc).
+- **Selection (multi):** `canvasSel` is a `Set` of ids; `selectOnly`/`toggleSelect`/
+  `clearCanvasSelection`/`selectedItems`/`updateSelClasses` (`.selected` on all, `.single`
+  only when one). Marquee via `startMarquee` (drag empty space; Shift = additive);
+  `startPan` (Space/middle). Ctrl/⌘+A select-all.
+- **Interaction:** `startItemDrag` (drag body, moves the whole selection, **snaps** via
+  `computeSnap`/`rectsOverlap` with guides drawn by `drawGuides`/`clearGuides`; Alt disables
+  snap), `startResize` (single-select handle), pan/zoom `panBy`/`zoomAt`/`zoomAtCenter`/
+  `fitCanvas`. Bulk ops `duplicateItems`/`deleteItems`, clipboard `copyCanvasSelection`/
+  `pasteCanvasClipboard` (in-app `canvasClip`; the window `paste` handler prefers a system
+  image, else pastes the clip). Keyboard `onCanvasKeyDown` (Del/Backspace, ⌘/Ctrl+D/C, ⌘/Ctrl+A,
+  arrows, Esc). Note colour via a `.cvi-palette` popover.
 - **Coord math (pure, unit-tested in `test/run.mjs`):** `screenToWorld`, `worldToScreen`,
   `clampZoom` — item `x/y/w/h` are **world coordinates**; convert with these (divide screen
   deltas by `canvasView.zoom`). Keep these pure and don't change their signatures.
 - **Key ids:** `#canvas-board`, `#canvas-surface`, `#canvas-add-img`, `#canvas-add-note`,
-  `#canvas-file`, `#canvas-status`, `#canvas-hint`, and the zoom bar
+  `#canvas-file`, `#canvas-status`, `#canvas-hint`, the overlay `#canvas-guides` (holds
+  alignment guides + the marquee), and the zoom bar
   `#canvas-zoom-in`/`#canvas-zoom-out`/`#canvas-zoom-pct`/`#canvas-fit`.
 - **Data model:** item `{ id, type: "image"|"note", path?, text?, color?, x, y, w, h, z }`
   (unchanged — positions are world coords).
@@ -46,7 +54,9 @@ shipped; Phases 2–3 pending).
 - After mutating item state: `save.canvas(); renderCanvas();`. After a viewport change:
   `applyViewTransform(); saveCanvasView();`.
 - Depends on **sync-feature** for the Supabase client `sb` — coordinate on auth/Storage.
-- Touch/pinch and multi-select/snapping are **not yet built** (Phases 2–3).
+- Multi-select, marquee, snapping/alignment guides, colour palette, and copy/paste are built
+  (Phase 2). Text/shapes, connectors, minimap, undo/redo, and pinch/touch are **not yet
+  built** (Phase 3).
 - Served-asset change → bump `?v=`, `npm test`, ship via the `deploy` skill.
 
 Return a concise summary of files/lines changed.

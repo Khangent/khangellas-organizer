@@ -111,6 +111,12 @@ Today items live on a fixed 2200×1500 surface navigated by scrollbars. The rede
    wheel to zoom?
 3. **Touch/pinch:** fine to defer to Phase 3, or needed now?
 
-**Status: APPROVED 2026-08-17 — implementing Phase 1.**
-Decisions: (1) Phase 1 only; (2) ⌘/Ctrl+wheel zooms to cursor, plain wheel pans,
+**Status: Phase 1 SHIPPED (`?v=30`) + Phase 2 SHIPPED (`?v=31`), 2026-08-17.**
+Decisions: (1) built in phases; (2) ⌘/Ctrl+wheel zooms to cursor, plain wheel pans,
 Shift+wheel pans horizontally; (3) touch/pinch deferred to Phase 3.
+
+Phase 2 delivered: marquee multi-select (drag empty space), Shift-click toggle, Ctrl/⌘+A
+select-all, group move, **snapping to other items' edges/centres with alignment guides**
+(Alt disables), note **colour-palette popover**, and **copy/paste** (Ctrl/⌘+C/V, cascading)
+plus multi delete/duplicate/arrow-nudge. New pure helpers `rectsOverlap`/`computeSnap` are
+unit-tested. Phase 3 remaining: text/shapes, connectors, minimap, undo/redo, pinch/touch.
