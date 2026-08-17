@@ -138,7 +138,7 @@ function runApp() {
   const windowStub = { addEventListener() {}, removeEventListener() {} };
   const noop = () => {};
   const exportsTail =
-    "\n;return {num,round1,macroTotals,kcalOf,parseSteamId,personGold,raidStats,fmtGold,GAME_STATUS,PRIORITY_RANK,mkIngredient,GAME_ORDER};";
+    "\n;return {num,round1,macroTotals,kcalOf,parseSteamId,personGold,raidStats,fmtGold,GAME_STATUS,PRIORITY_RANK,mkIngredient,GAME_ORDER,clampZoom,screenToWorld,worldToScreen};";
   // eslint-disable-next-line no-new-func
   const factory = new Function(
     "window", "document", "localStorage", "alert", "confirm", "prompt", "console",
@@ -167,7 +167,8 @@ console.log("\n\x1b[1mUnit (real functions)\x1b[0m");
 if (!api) {
   check("unit tests", () => assert(false, "skipped — app.js failed to load"));
 } else {
-  const { num, round1, macroTotals, kcalOf, parseSteamId, personGold, raidStats, fmtGold } = api;
+  const { num, round1, macroTotals, kcalOf, parseSteamId, personGold, raidStats, fmtGold,
+          clampZoom, screenToWorld, worldToScreen } = api;
 
   check("num() coerces only positive finite numbers", () => {
     eq(num("5"), 5); eq(num("2.5"), 2.5); eq(num("abc"), 0); eq(num("-3"), 0);
@@ -197,6 +198,13 @@ if (!api) {
     eq(raidStats([]), { done: 0, total: 0 });
   });
   check("fmtGold() formats with thousands separators", () => { eq(fmtGold(1234), "1,234"); eq(fmtGold(0), "0"); });
+  check("clampZoom() clamps zoom to [0.1, 4]", () => { eq(clampZoom(0.05), 0.1); eq(clampZoom(10), 4); eq(clampZoom(1), 1); });
+  check("canvas world<->screen coordinate round-trip", () => {
+    const view = { panX: 100, panY: 50, zoom: 2 };
+    eq(worldToScreen(30, 40, 10, 20, view), { x: 170, y: 150 });
+    eq(screenToWorld(170, 150, 10, 20, view), { x: 30, y: 40 });
+    eq(screenToWorld(42, 7, 0, 0, { panX: 0, panY: 0, zoom: 1 }), { x: 42, y: 7 });
+  });
 }
 
 // ------------------------------------------------------------
