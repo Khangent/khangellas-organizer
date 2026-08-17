@@ -1553,312 +1553,246 @@ function initChat() {
 }
 
 // ============================================================
-//  Recipe Extractor (image / video / text → structured recipe via AI)
+//  Recipes (ingredient + macro tracker)
 // ============================================================
-const RECIPE_SYS =
-  "You are a recipe extraction assistant. From the provided image(s) and/or text, extract the recipe. " +
-  "Respond with ONLY a JSON object (no markdown, no commentary) in exactly this shape: " +
-  '{"title": string, "servings": string, "time": string, "ingredients": [string], "steps": [string], "notes": string}. ' +
-  "Ingredients like '200 g flour'. Steps: short, clear, imperative, in order. Use empty strings/arrays for anything not shown. " +
-  'If no recipe is present, return {"title":"","ingredients":[],"steps":[]}.';
+const num = (v) => { const n = parseFloat(v); return isFinite(n) && n > 0 ? n : 0; };
+const round1 = (n) => Math.round(n * 10) / 10;
 
-let rexImages = [];   // data URLs to send to the model
-let rexSource = "";   // "Screenshot" | "GIF" | "Video" | "Text"
-let rexDraft = null;  // extracted-but-unsaved recipe
-let rexBusy = false;
 let recipeQuery = "";
+let recDraft = null;      // working copy of the recipe being edited
+let recEditingId = null;  // id when editing an existing recipe, else null
 
-function setRexStatus(text, kind = "") {
-  const s = $("#rex-status");
-  if (s) { s.textContent = text; s.className = "ai-status " + kind; }
+function mkIngredient() {
+  return { id: uid(), name: "", amount: "", protein: "", carbs: "", fat: "" };
 }
 
-function parseRecipeJSON(s) {
-  let t = (s || "").trim();
-  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fence) t = fence[1].trim();
-  try { return JSON.parse(t); } catch {}
-  const a = t.indexOf("{"), b = t.lastIndexOf("}");
-  if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch {} }
-  return null;
-}
-
-function dataUrlThumb(dataUrl, maxSize, cb) {
-  const img = new Image();
-  img.onload = () => {
-    const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
-    const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
-    const c = document.createElement("canvas");
-    c.width = w; c.height = h;
-    c.getContext("2d").drawImage(img, 0, 0, w, h);
-    cb(c.toDataURL("image/jpeg", 0.65));
-  };
-  img.onerror = () => cb("");
-  img.src = dataUrl;
-}
-
-function seekVideo(video, t) {
-  return new Promise((resolve) => {
-    const on = () => { video.removeEventListener("seeked", on); resolve(); };
-    video.addEventListener("seeked", on);
-    try { video.currentTime = t; } catch { resolve(); }
-  });
-}
-function frameDataURL(video, maxSize) {
-  const scale = Math.min(1, maxSize / Math.max(video.videoWidth, video.videoHeight));
-  const w = Math.round(video.videoWidth * scale), h = Math.round(video.videoHeight * scale);
-  const c = document.createElement("canvas");
-  c.width = w; c.height = h;
-  c.getContext("2d").drawImage(video, 0, 0, w, h);
-  return c.toDataURL("image/jpeg", 0.8);
-}
-async function sampleVideoFrames(file, count, maxSize) {
-  const url = URL.createObjectURL(file);
-  const video = document.createElement("video");
-  video.muted = true; video.playsInline = true; video.preload = "auto"; video.src = url;
-  await new Promise((resolve, reject) => {
-    video.onloadeddata = resolve;
-    video.onerror = () => reject(new Error("Couldn't read that video file."));
-  });
-  const dur = video.duration && isFinite(video.duration) ? video.duration : 0;
-  const frames = [];
-  for (let i = 0; i < Math.max(1, count); i++) {
-    const t = dur ? dur * ((i + 0.5) / count) : 0;
-    await seekVideo(video, t);
-    frames.push(frameDataURL(video, maxSize));
-    if (!dur) break;
-  }
-  URL.revokeObjectURL(url);
-  return frames;
-}
-
-function showRexPreview(images) {
-  const p = $("#rex-preview");
-  p.innerHTML = "";
-  p.hidden = !images.length;
-  images.slice(0, 6).forEach((src) => p.append(el("img", { class: "rex-thumb", src })));
-}
-
-function handleRexFile(file) {
-  if (!file) return;
-  if (file.type.startsWith("video/")) {
-    setRexStatus("Reading video…", "");
-    sampleVideoFrames(file, 6, 800)
-      .then((frames) => {
-        rexImages = frames; rexSource = "Video"; showRexPreview(frames);
-        setRexStatus(frames.length + " frame(s) captured — click Extract.", "ok");
-      })
-      .catch((err) => { console.error(err); setRexStatus(err.message, "warn"); });
-  } else if (file.type.startsWith("image/")) {
-    resizeImage(file, 1280, (dataUrl) => {
-      rexImages = [dataUrl];
-      rexSource = file.type === "image/gif" ? "GIF" : "Screenshot";
-      showRexPreview([dataUrl]);
-      setRexStatus("Image ready — click Extract.", "ok");
-    });
-  } else {
-    setRexStatus("Unsupported file. Use an image, GIF, or video.", "warn");
-  }
-}
-
-function normalizeRecipe(o, source, url, thumb) {
-  const arr = (x) =>
-    Array.isArray(x)
-      ? x.map((s) => String(s).trim()).filter(Boolean)
-      : x ? String(x).split("\n").map((s) => s.trim()).filter(Boolean) : [];
-  return {
-    id: uid(),
-    title: (o.title || "Untitled recipe").toString().trim(),
-    servings: (o.servings || "").toString().trim(),
-    time: (o.time || "").toString().trim(),
-    ingredients: arr(o.ingredients),
-    steps: arr(o.steps),
-    notes: (o.notes || "").toString().trim(),
-    source: source || "",
-    sourceUrl: url || "",
-    thumb: thumb || "",
-    createdAt: new Date().toISOString(),
-  };
-}
-
-async function runExtract() {
-  if (rexBusy) return;
-  const text = $("#rex-text").value.trim();
-  const url = $("#rex-url").value.trim();
-  if (!aiCfg.key) {
-    setRexStatus("Add your AI key in the AI Assistant tab first, then come back.", "warn");
-    return;
-  }
-  if (!rexImages.length && !text) {
-    setRexStatus(
-      url
-        ? "Reel links can't be fetched in the browser yet. Screenshot the reel (or paste its caption) and try that."
-        : "Add a screenshot / video / GIF, or paste some text first.",
-      "warn"
-    );
-    return;
-  }
-  rexBusy = true;
-  $("#rex-extract").disabled = true;
-  setRexStatus("Extracting… ✨", "");
-  try {
-    const content = [];
-    let instr = "Extract the recipe as specified in the system message.";
-    if (text) instr += "\n\nText provided:\n" + text;
-    if (url) instr += "\n\n(Source link for reference only, you cannot open it: " + url + ")";
-    content.push({ type: "text", text: instr });
-    rexImages.forEach((src) => content.push({ type: "image_url", image_url: { url: src } }));
-
-    const raw = await aiComplete(
-      [{ role: "system", content: RECIPE_SYS }, { role: "user", content }],
-      { temperature: 0.2, max_tokens: 1600, timeout: 90000 }
-    );
-    const obj = parseRecipeJSON(raw);
-    if (!obj || (!obj.title && !(obj.ingredients || []).length && !(obj.steps || []).length)) {
-      setRexStatus("Hmm, I couldn't find a recipe there. Try a clearer screenshot or paste the text.", "warn");
-      return;
-    }
-    const finish = (thumb) => {
-      rexDraft = normalizeRecipe(obj, rexSource || (text ? "Text" : ""), url, thumb);
-      renderRexResult();
-      setRexStatus("Extracted ✓ — review and save below.", "ok");
-    };
-    if (rexImages[0]) dataUrlThumb(rexImages[0], 220, finish);
-    else finish("");
-  } catch (err) {
-    console.error("[recipe] extract", err);
-    setRexStatus("Extraction failed: " + err.message, "warn");
-  } finally {
-    rexBusy = false;
-    $("#rex-extract").disabled = false;
-  }
-}
-
-function rexField(label, input) {
-  return el("label", { class: "rex-field" }, [el("span", { class: "rex-field-label", text: label }), input]);
-}
-
-function renderRexResult() {
-  const box = $("#rex-result");
-  box.hidden = false;
-  box.innerHTML = "";
-  const d = rexDraft;
-  box.append(
-    el("h3", { class: "rex-result-title", text: "Review & save" }),
-    rexField("Title", el("input", { class: "rex-f-title", value: d.title })),
-    el("div", { class: "rex-row" }, [
-      rexField("Servings", el("input", { class: "rex-f-serv", value: d.servings, placeholder: "e.g. 4" })),
-      rexField("Time", el("input", { class: "rex-f-time", value: d.time, placeholder: "e.g. 30 min" })),
-    ]),
-    rexField("Ingredients (one per line)", el("textarea", { class: "rex-f-ing", rows: "6" }, [d.ingredients.join("\n")])),
-    rexField("Steps (one per line)", el("textarea", { class: "rex-f-steps", rows: "8" }, [d.steps.join("\n")])),
-    el("div", { class: "rex-result-actions" }, [
-      el("button", { class: "btn-primary", text: "💾 Save recipe", onclick: saveDraft }),
-      el("button", { class: "btn-ghost", text: "Discard", onclick: discardDraft }),
-    ])
+function macroTotals(ingredients) {
+  return ingredients.reduce(
+    (t, i) => { t.p += num(i.protein); t.c += num(i.carbs); t.f += num(i.fat); return t; },
+    { p: 0, c: 0, f: 0 }
   );
 }
+const kcalOf = (t) => Math.round(t.p * 4 + t.c * 4 + t.f * 9);
 
-function saveDraft() {
-  const box = $("#rex-result");
-  const g = (sel) => box.querySelector(sel);
-  const lines = (v) => v.split("\n").map((s) => s.trim()).filter(Boolean);
-  rexDraft.title = g(".rex-f-title").value.trim() || "Untitled recipe";
-  rexDraft.servings = g(".rex-f-serv").value.trim();
-  rexDraft.time = g(".rex-f-time").value.trim();
-  rexDraft.ingredients = lines(g(".rex-f-ing").value);
-  rexDraft.steps = lines(g(".rex-f-steps").value);
-  recipes.unshift(rexDraft);
-  save.recipes();
-  discardDraft();
-  rexImages = []; rexSource = "";
-  $("#rex-text").value = ""; $("#rex-url").value = "";
-  showRexPreview([]);
-  setRexStatus("Saved ✓", "ok");
-  renderRecipes();
+function macroChips(t, opts = {}) {
+  return el("div", { class: "macro-chips" + (opts.small ? " small" : "") }, [
+    el("span", { class: "macro-chip p", text: `P ${round1(t.p)}g` }),
+    el("span", { class: "macro-chip c", text: `C ${round1(t.c)}g` }),
+    el("span", { class: "macro-chip f", text: `F ${round1(t.f)}g` }),
+    el("span", { class: "kcal-badge", text: `${kcalOf(t)} kcal` }),
+  ]);
 }
 
-function discardDraft() {
-  rexDraft = null;
-  const box = $("#rex-result");
-  box.hidden = true;
+// ---- Editor (in a modal) ----
+function newRecipe() {
+  recEditingId = null;
+  recDraft = { id: uid(), title: "", servings: "", ingredients: [mkIngredient()], createdAt: new Date().toISOString() };
+  renderRecEditor();
+}
+
+function editRecipe(r) {
+  recEditingId = r.id;
+  recDraft = {
+    id: r.id, title: r.title, servings: r.servings || "", createdAt: r.createdAt,
+    ingredients: (r.ingredients || []).map((i) => ({ ...i, id: i.id || uid() })),
+  };
+  if (!recDraft.ingredients.length) recDraft.ingredients.push(mkIngredient());
+  renderRecEditor();
+}
+
+function closeRecEditor() {
+  recDraft = null; recEditingId = null;
+  const m = $("#rec-modal");
+  m.hidden = true;
+  m.querySelector(".rec-editor").innerHTML = "";
+}
+
+function macroInput(ing, key, ph) {
+  return el("input", {
+    class: "rec-macro-in", type: "number", min: "0", step: "0.1", inputmode: "decimal",
+    value: ing[key] === "" ? "" : String(ing[key]), placeholder: ph,
+    oninput: (e) => { ing[key] = e.target.value; updateRecTotals(); },
+  });
+}
+
+function renderRecEditor() {
+  const m = $("#rec-modal");
+  const box = m.querySelector(".rec-editor");
   box.innerHTML = "";
+  const d = recDraft;
+
+  const rows = el("div", { class: "rec-ing-rows" });
+  d.ingredients.forEach((ing) => {
+    rows.append(el("div", { class: "rec-ing-row" }, [
+      el("input", { class: "rec-in-name", value: ing.name, placeholder: "Ingredient",
+        oninput: (e) => { ing.name = e.target.value; } }),
+      el("input", { class: "rec-in-amt", value: ing.amount, placeholder: "e.g. 200 g",
+        oninput: (e) => { ing.amount = e.target.value; } }),
+      macroInput(ing, "protein", "P"),
+      macroInput(ing, "carbs", "C"),
+      macroInput(ing, "fat", "F"),
+      el("button", { class: "icon-btn tiny rec-in-del", title: "Remove ingredient", text: "✕",
+        onclick: () => {
+          d.ingredients = d.ingredients.filter((x) => x.id !== ing.id);
+          if (!d.ingredients.length) d.ingredients.push(mkIngredient());
+          renderRecEditor();
+        } }),
+    ]));
+  });
+
+  box.append(
+    el("div", { class: "rec-editor-head" }, [
+      el("h3", { text: recEditingId ? "Edit recipe" : "New recipe" }),
+      el("button", { class: "icon-btn", title: "Close", text: "✕", onclick: closeRecEditor }),
+    ]),
+    el("input", { class: "rec-title-in", value: d.title, placeholder: "Recipe name",
+      oninput: (e) => { d.title = e.target.value; } }),
+    el("label", { class: "rec-serv" }, [
+      el("span", { text: "Servings" }),
+      el("input", { type: "number", min: "1", step: "1", value: d.servings, placeholder: "—",
+        oninput: (e) => { d.servings = e.target.value; updateRecTotals(); } }),
+    ]),
+    el("div", { class: "rec-ing-head" }, [
+      el("span", { text: "Ingredient" }), el("span", { text: "Amount" }),
+      el("span", { class: "center", text: "P (g)" }), el("span", { class: "center", text: "C (g)" }),
+      el("span", { class: "center", text: "F (g)" }), el("span", {}),
+    ]),
+    rows,
+    el("button", { class: "btn-ghost tiny rec-add-ing", text: "+ Add ingredient",
+      onclick: () => { d.ingredients.push(mkIngredient()); renderRecEditor(); } }),
+    el("div", { class: "rec-totals", id: "rec-editor-totals" }),
+    el("div", { class: "rec-editor-actions" }, [
+      el("button", { class: "btn-primary", text: "💾 Save recipe", onclick: saveRecipe }),
+      el("button", { class: "btn-ghost", text: "Cancel", onclick: closeRecEditor }),
+      recEditingId ? el("button", { class: "btn-ghost rec-del-btn", text: "🗑 Delete", onclick: () => deleteRecipe(d.id) }) : null,
+    ])
+  );
+  m.hidden = false;
+  updateRecTotals();
 }
 
+function updateRecTotals() {
+  const box = $("#rec-editor-totals");
+  if (!box || !recDraft) return;
+  box.innerHTML = "";
+  const t = macroTotals(recDraft.ingredients);
+  box.append(el("div", { class: "rec-totals-line" }, [
+    el("span", { class: "rec-totals-label", text: "Total" }), macroChips(t),
+  ]));
+  const serv = parseInt(recDraft.servings, 10);
+  if (serv > 1) {
+    box.append(el("div", { class: "rec-totals-line" }, [
+      el("span", { class: "rec-totals-label", text: `Per serving (${serv})` }),
+      macroChips({ p: t.p / serv, c: t.c / serv, f: t.f / serv }),
+    ]));
+  }
+}
+
+function saveRecipe() {
+  const d = recDraft;
+  d.title = (d.title || "").trim() || "Untitled recipe";
+  d.ingredients = d.ingredients.filter((i) => (i.name || "").trim() || num(i.protein) || num(i.carbs) || num(i.fat));
+  const idx = recipes.findIndex((r) => r.id === d.id);
+  if (idx >= 0) recipes[idx] = d; else recipes.unshift(d);
+  save.recipes();
+  closeRecEditor();
+  renderRecipes();
+  updateBadges();
+}
+
+function deleteRecipe(id) {
+  const r = recipes.find((x) => x.id === id);
+  if (!confirm(`Delete “${(r && r.title) || "this recipe"}”?`)) return;
+  recipes = recipes.filter((x) => x.id !== id);
+  save.recipes();
+  closeRecEditor();
+  renderRecipes();
+  updateBadges();
+}
+
+// ---- List ----
 function renderRecipes() {
-  const list = $("#rex-list");
+  const list = $("#rec-list");
   if (!list) return;
   list.innerHTML = "";
   if (!recipes.length) {
-    list.append(el("div", { class: "empty", text: "No saved recipes yet. Extract one above! 🍳" }));
+    list.append(el("div", { class: "empty", text: "No recipes yet. Add one to start tracking macros! 🥗" }));
     return;
   }
   const q = recipeQuery.toLowerCase();
   const items = recipes.filter(
-    (r) => !q || (r.title + " " + r.ingredients.join(" ")).toLowerCase().includes(q)
+    (r) => !q || (r.title + " " + (r.ingredients || []).map((i) => i.name).join(" ")).toLowerCase().includes(q)
   );
   if (!items.length) {
     list.append(el("div", { class: "empty", text: "No recipes match your search." }));
     return;
   }
   items.forEach((r) => {
-    const body = el("div", { class: "rex-card-body", hidden: "hidden" }, [
-      r.ingredients.length
-        ? el("div", {}, [el("h4", { text: "Ingredients" }), el("ul", {}, r.ingredients.map((i) => el("li", { text: i })))])
-        : null,
-      r.steps.length
-        ? el("div", {}, [el("h4", { text: "Steps" }), el("ol", {}, r.steps.map((s) => el("li", { text: s })))])
-        : null,
-      r.notes ? el("p", { class: "rex-notes", text: r.notes }) : null,
-      r.sourceUrl ? el("a", { class: "rex-srclink", href: r.sourceUrl, target: "_blank", rel: "noopener", text: "Open source ↗" }) : null,
-    ]);
-    const head = el("div", { class: "rex-card-head", onclick: () => { body.hidden = !body.hidden; } }, [
-      r.thumb
-        ? el("img", { class: "rex-card-thumb", src: r.thumb, alt: "" })
-        : el("div", { class: "rex-card-thumb ph", text: "🍽" }),
-      el("div", { class: "rex-card-info" }, [
-        el("div", { class: "rex-card-title", text: r.title }),
-        el("div", { class: "rex-card-meta", text: [r.time, r.servings ? `${r.servings} servings` : "", r.source].filter(Boolean).join(" · ") }),
+    const ings = r.ingredients || [];
+    const t = macroTotals(ings);
+    const serv = parseInt(r.servings, 10);
+
+    const viewRows = ings.map((i) => {
+      const it = macroTotals([i]);
+      return el("div", { class: "rec-view-row" }, [
+        el("span", { class: "rec-view-name", text: i.name || "—" }),
+        el("span", { class: "rec-view-amt", text: i.amount || "" }),
+        el("span", { class: "center", text: String(round1(it.p)) }),
+        el("span", { class: "center", text: String(round1(it.c)) }),
+        el("span", { class: "center", text: String(round1(it.f)) }),
+      ]);
+    });
+
+    const body = el("div", { class: "rec-card-body", hidden: "hidden" }, [
+      ings.length
+        ? el("div", { class: "rec-view-table" }, [
+            el("div", { class: "rec-view-row head" }, [
+              el("span", { text: "Ingredient" }), el("span", { text: "Amount" }),
+              el("span", { class: "center", text: "P" }), el("span", { class: "center", text: "C" }), el("span", { class: "center", text: "F" }),
+            ]),
+            ...viewRows,
+          ])
+        : el("p", { class: "rec-empty-note", text: "No ingredients yet." }),
+      el("div", { class: "rec-totals" }, [
+        el("div", { class: "rec-totals-line" }, [el("span", { class: "rec-totals-label", text: "Total" }), macroChips(t)]),
+        serv > 1
+          ? el("div", { class: "rec-totals-line" }, [
+              el("span", { class: "rec-totals-label", text: `Per serving (${serv})` }),
+              macroChips({ p: t.p / serv, c: t.c / serv, f: t.f / serv }),
+            ])
+          : null,
       ]),
-      el("button", {
-        class: "icon-btn", title: "Delete", text: "🗑",
-        onclick: (e) => {
-          e.stopPropagation();
-          if (confirm(`Delete “${r.title}”?`)) { recipes = recipes.filter((x) => x.id !== r.id); save.recipes(); renderRecipes(); }
-        },
-      }),
     ]);
-    list.append(el("div", { class: "rex-card" }, [head, body]));
+
+    const head = el("div", {
+      class: "rec-card-head",
+      onclick: (e) => { if (e.target.closest("button")) return; body.hidden = !body.hidden; },
+    }, [
+      el("div", { class: "rec-card-info" }, [
+        el("div", { class: "rec-card-title", text: r.title }),
+        el("div", { class: "rec-card-meta", text: [
+          `${ings.length} ingredient${ings.length === 1 ? "" : "s"}`,
+          serv > 0 ? `${serv} serving${serv === 1 ? "" : "s"}` : "",
+        ].filter(Boolean).join(" · ") }),
+      ]),
+      macroChips(t, { small: true }),
+      el("div", { class: "rec-card-actions" }, [
+        el("button", { class: "icon-btn", title: "Edit", text: "✏️", onclick: () => editRecipe(r) }),
+        el("button", { class: "icon-btn", title: "Delete", text: "🗑", onclick: () => deleteRecipe(r.id) }),
+      ]),
+    ]);
+
+    list.append(el("div", { class: "rec-card" }, [head, body]));
   });
 }
 
 function initRecipes() {
-  const file = $("#rex-file");
-  const drop = $("#rex-drop");
-  $("#rex-browse").addEventListener("click", () => file.click());
-  file.addEventListener("change", () => { if (file.files[0]) handleRexFile(file.files[0]); file.value = ""; });
-  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("drag"); });
-  drop.addEventListener("dragleave", () => drop.classList.remove("drag"));
-  drop.addEventListener("drop", (e) => {
-    e.preventDefault(); drop.classList.remove("drag");
-    const f = e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f) handleRexFile(f);
-  });
-  $("#rex-extract").addEventListener("click", runExtract);
-  $("#rex-search").addEventListener("input", (e) => { recipeQuery = e.target.value.trim(); renderRecipes(); });
-  window.addEventListener("paste", (e) => {
-    const view = $("#view-recipes");
-    if (!view || !view.classList.contains("active")) return;
-    const items = e.clipboardData && e.clipboardData.items;
-    if (!items) return;
-    for (const it of items) {
-      if (it.type && it.type.startsWith("image/")) {
-        const f = it.getAsFile();
-        if (f) { handleRexFile(f); e.preventDefault(); }
-        break;
-      }
-    }
-  });
+  const nb = $("#rec-new");
+  if (nb) nb.addEventListener("click", newRecipe);
+  const s = $("#rec-search");
+  if (s) s.addEventListener("input", (e) => { recipeQuery = e.target.value.trim(); renderRecipes(); });
+  const modal = $("#rec-modal");
+  if (modal) modal.addEventListener("click", (e) => { if (e.target === modal) closeRecEditor(); });
 }
 
 // ============================================================

@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icon-180.png?v=24" />
   <link rel="manifest" href="manifest.webmanifest?v=24" />
   <meta name="theme-color" content="#ec4899" />
-  <link rel="stylesheet" href="styles.css?v=28" />
+  <link rel="stylesheet" href="styles.css?v=29" />
 </head>
 <body>
   <div class="app">
@@ -217,30 +217,18 @@
       <!-- Recipes view -->
       <section class="view" id="view-recipes">
         <header class="view-header">
-          <h2>Recipe Extractor</h2>
-          <p class="view-sub">Turn a screenshot, video/GIF, or pasted text into a clean recipe with steps. Uses your AI Assistant connection.</p>
+          <h2>Recipes</h2>
+          <p class="view-sub">Build recipes from ingredients and track their protein, carbs, and fat.</p>
         </header>
-        <div class="rex-panel">
-          <div class="rex-drop" id="rex-drop">
-            <input type="file" id="rex-file" accept="image/*,video/*" hidden />
-            <div class="rex-drop-inner">
-              <div class="rex-drop-icon">📷🎬</div>
-              <p><strong>Drop</strong> a file, <button type="button" class="linkbtn" id="rex-browse">browse</button>, or <strong>paste</strong> a screenshot</p>
-              <p class="rex-sub">Images · GIFs · video files</p>
-            </div>
-            <div class="rex-preview" id="rex-preview" hidden></div>
-          </div>
-          <textarea id="rex-text" class="rex-text" rows="3" placeholder="…or paste recipe text / a caption here"></textarea>
-          <input type="url" id="rex-url" class="rex-url" placeholder="…or paste a reel link (Instagram/TikTok)" autocomplete="off" />
-          <div class="rex-actions">
-            <button class="btn-primary" id="rex-extract">✨ Extract recipe</button>
-            <span class="ai-status" id="rex-status"></span>
-          </div>
+        <div class="rec-toolbar">
+          <button class="btn-primary" id="rec-new">+ New recipe</button>
+          <input type="text" id="rec-search" class="rec-search" placeholder="Search recipes…" autocomplete="off" />
         </div>
-        <div class="rex-result" id="rex-result" hidden></div>
-        <div class="rex-listwrap">
-          <input type="text" id="rex-search" class="rex-search" placeholder="Search saved recipes…" autocomplete="off" />
-          <div class="rex-list" id="rex-list"></div>
+        <div class="rec-list" id="rec-list"></div>
+
+        <!-- Recipe editor (modal) -->
+        <div class="modal-overlay" id="rec-modal" hidden>
+          <div class="modal rec-editor"></div>
         </div>
       </section>
 
@@ -343,7 +331,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="tcg-data.js?v=28"></script>
-  <script src="app.js?v=28"></script>
+  <script src="tcg-data.js?v=29"></script>
+  <script src="app.js?v=29"></script>
 </body>
 </html>
