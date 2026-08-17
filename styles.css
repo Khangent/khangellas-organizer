@@ -627,6 +627,18 @@ input[type="number"] { width: 80px; }
 .cvi.selected { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary), var(--shadow); cursor: move; }
 .cvi.editing, .cvi.editing .cvi-note { cursor: text; }
 
+/* Text element — transparent card, just editable text */
+.cvi.text { background: transparent; border: none; box-shadow: none; }
+.cvi.text .cvi-body { background: transparent; }
+.cvi.text .cvi-note { color: var(--text); font-size: 1rem; font-weight: 500; }
+
+/* Shape element — filled rect/ellipse, no card chrome */
+.cvi.shape { background: transparent; border: none; box-shadow: none; }
+.cvi.shape .cvi-body { border: 1px solid rgba(0,0,0,0.12); }
+
+/* Keep the selection outline visible on the chrome-less items */
+.cvi.text.selected, .cvi.shape.selected { box-shadow: 0 0 0 2px var(--primary); }
+
 /* Per-item floating toolbar — only while selected */
 .cvi-tools {
   position: absolute; top: -36px; right: 0; display: none; gap: 3px;

@@ -138,7 +138,7 @@ function runApp() {
   const windowStub = { addEventListener() {}, removeEventListener() {} };
   const noop = () => {};
   const exportsTail =
-    "\n;return {num,round1,macroTotals,kcalOf,parseSteamId,personGold,raidStats,fmtGold,GAME_STATUS,PRIORITY_RANK,mkIngredient,GAME_ORDER,clampZoom,screenToWorld,worldToScreen,rectsOverlap,computeSnap};";
+    "\n;return {num,round1,macroTotals,kcalOf,parseSteamId,personGold,raidStats,fmtGold,GAME_STATUS,PRIORITY_RANK,mkIngredient,GAME_ORDER,clampZoom,screenToWorld,worldToScreen,rectsOverlap,computeSnap,pushCapped};";
   // eslint-disable-next-line no-new-func
   const factory = new Function(
     "window", "document", "localStorage", "alert", "confirm", "prompt", "console",
@@ -168,7 +168,7 @@ if (!api) {
   check("unit tests", () => assert(false, "skipped — app.js failed to load"));
 } else {
   const { num, round1, macroTotals, kcalOf, parseSteamId, personGold, raidStats, fmtGold,
-          clampZoom, screenToWorld, worldToScreen, rectsOverlap, computeSnap } = api;
+          clampZoom, screenToWorld, worldToScreen, rectsOverlap, computeSnap, pushCapped } = api;
 
   check("num() coerces only positive finite numbers", () => {
     eq(num("5"), 5); eq(num("2.5"), 2.5); eq(num("abc"), 0); eq(num("-3"), 0);
@@ -216,6 +216,10 @@ if (!api) {
     eq(s.dx, 4);
     eq(s.vlines.includes(100), true);
     eq(computeSnap({ x: 70, y: 200, w: 40, h: 40 }, others, 6).dx, 0); // out of threshold
+  });
+  check("pushCapped() bounds the undo history", () => {
+    eq(pushCapped([1, 2, 3], 4, 3), [2, 3, 4]); // drops oldest at cap
+    eq(pushCapped([1], 2, 5), [1, 2]);          // under cap keeps all
   });
 }
 

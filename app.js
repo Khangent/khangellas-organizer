@@ -1964,8 +1964,14 @@ let canvasSpace = false;         // is the space bar held (pan gesture)?
 let canvasViewTimer = null;
 const canvasNodes = new Map();   // id -> DOM node (rebuilt each render)
 
+// Undo/redo — per-device, in-memory snapshots of canvasItems.
+const HIST_MAX = 80;
+let canvasPast = [], canvasFuture = [], canvasCoalesce = null;
+
 // --- Pure coordinate helpers (unit-tested in test/run.mjs) ---
 const clampZoom = (z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+// Push onto a bounded stack (drops the oldest past the cap). Used by the undo history.
+const pushCapped = (arr, item, cap) => { arr.push(item); while (arr.length > cap) arr.shift(); return arr; };
 const screenToWorld = (cx, cy, rectLeft, rectTop, view) => ({
   x: (cx - rectLeft - view.panX) / view.zoom,
   y: (cy - rectTop - view.panY) / view.zoom,
@@ -2014,7 +2020,7 @@ function updateCanvasAuth() {
   const ok = !!(sb && syncUser);
   const hint = $("#canvas-hint");
   if (hint) hint.hidden = ok;
-  ["#canvas-add-img", "#canvas-add-note"].forEach((sel) => { const b = $(sel); if (b) b.disabled = !ok; });
+  ["#canvas-add-img", "#canvas-add-note", "#canvas-add-text", "#canvas-add-shape"].forEach((sel) => { const b = $(sel); if (b) b.disabled = !ok; });
 }
 
 async function canvasImageUrl(path) {
@@ -2127,6 +2133,36 @@ function toggleSelect(id) { if (canvasSel.has(id)) canvasSel.delete(id); else ca
 function clearCanvasSelection() { canvasSel.clear(); updateSelClasses(); }
 function selectedItems() { return canvasItems.filter((x) => canvasSel.has(x.id)); }
 
+// --- Undo / redo ---
+const canvasSnapshot = () => JSON.stringify(canvasItems);
+// Snapshot the current board BEFORE a mutation. `tag` coalesces repeats of one gesture
+// (e.g. holding an arrow key) into a single undo step.
+function beginChange(tag = null) {
+  if (tag && tag === canvasCoalesce) return;
+  pushCapped(canvasPast, canvasSnapshot(), HIST_MAX);
+  canvasFuture = [];
+  canvasCoalesce = tag;
+}
+function restoreCanvas(json) {
+  canvasItems = JSON.parse(json);
+  canvasSel = new Set();
+  canvasCoalesce = null;
+  save.canvas();
+  renderCanvas();
+}
+function undoCanvas() {
+  if (!canvasPast.length) { setCanvasStatus("Nothing to undo", ""); return; }
+  canvasFuture.push(canvasSnapshot());
+  restoreCanvas(canvasPast.pop());
+  setCanvasStatus("Undo", "");
+}
+function redoCanvas() {
+  if (!canvasFuture.length) { setCanvasStatus("Nothing to redo", ""); return; }
+  pushCapped(canvasPast, canvasSnapshot(), HIST_MAX);
+  restoreCanvas(canvasFuture.pop());
+  setCanvasStatus("Redo", "");
+}
+
 function bringToFront(item, node) {
   item.z = ++canvasZ;
   if (node) node.style.zIndex = item.z;
@@ -2137,7 +2173,7 @@ function bringToFront(item, node) {
 function startItemDrag(e, item, node) {
   if (e.target.closest(".cvi-resize") || e.target.closest(".cvi-tools")) return; // handled elsewhere
   if (canvasSpace || e.button === 1) return;                    // let the board pan instead
-  if (item.type === "note" && node.classList.contains("editing")) return; // editing text
+  if ((item.type === "note" || item.type === "text") && node.classList.contains("editing")) return; // editing text
   e.stopPropagation();
   if (e.shiftKey) { toggleSelect(item.id); return; }            // shift-click toggles, no drag
   if (!canvasSel.has(item.id)) selectOnly(item.id);             // clicking outside the selection resets it
@@ -2151,6 +2187,7 @@ function startItemDrag(e, item, node) {
   let moved = false;
   const move = (ev) => {
     if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 3) return;
+    if (!moved) beginChange();
     moved = true;
     let dx = (ev.clientX - sx) / canvasView.zoom, dy = (ev.clientY - sy) / canvasView.zoom;
     const snap = ev.altKey ? { dx: 0, dy: 0, vlines: [], hlines: [] }
@@ -2168,7 +2205,7 @@ function startItemDrag(e, item, node) {
     document.removeEventListener("pointerup", up);
     clearGuides();
     if (moved) save.canvas();
-    else if (item.type === "note" && canvasSel.size === 1) enterNoteEdit(item, node); // a click (no drag) edits the note
+    else if ((item.type === "note" || item.type === "text") && canvasSel.size === 1) enterNoteEdit(item, node); // a click (no drag) edits the text
   };
   document.addEventListener("pointermove", move);
   document.addEventListener("pointerup", up);
@@ -2180,7 +2217,9 @@ function startResize(e, item, node) {
   selectOnly(item.id);
   bringToFront(item, node);
   const sx = e.clientX, sy = e.clientY, ow = item.w, oh = item.h;
+  let began = false;
   const move = (ev) => {
+    if (!began) { beginChange(); began = true; }
     item.w = Math.max(90, Math.round(ow + (ev.clientX - sx) / canvasView.zoom));
     item.h = Math.max(60, Math.round(oh + (ev.clientY - sy) / canvasView.zoom));
     node.style.width = item.w + "px";
@@ -2206,6 +2245,7 @@ function enterNoteEdit(item, node) {
 
 function duplicateItems(items) {
   if (!items.length) return;
+  beginChange();
   const ids = [];
   items.forEach((it) => { const id = uid(); ids.push(id); canvasItems.push({ ...it, id, x: it.x + 24, y: it.y + 24, z: ++canvasZ }); });
   save.canvas();
@@ -2217,6 +2257,7 @@ function duplicateCanvasItem(item) { duplicateItems([item]); }
 
 function deleteItems(items) {
   if (!items.length) return;
+  beginChange();
   const ids = new Set(items.map((x) => x.id));
   const paths = items.filter((x) => x.type === "image" && x.path).map((x) => x.path);
   canvasItems = canvasItems.filter((x) => !ids.has(x.id));
@@ -2238,6 +2279,7 @@ function copyCanvasSelection() {
 }
 function pasteCanvasClipboard() {
   if (!canvasClip.length) return;
+  beginChange();
   const off = 24, ids = [];
   canvasClip.forEach((c) => { const id = uid(); ids.push(id); canvasItems.push({ ...c, id, x: c.x + off, y: c.y + off, z: ++canvasZ }); });
   canvasClip = canvasClip.map((c) => ({ ...c, x: c.x + off, y: c.y + off })); // cascade repeated pastes
@@ -2254,9 +2296,12 @@ function buildCanvasItem(item) {
     const img = el("img", { alt: "", draggable: "false" });
     canvasImageUrl(item.path).then((u) => { if (u) img.src = u; });
     body.append(img);
-  } else {
-    body.style.background = item.color || NOTE_COLORS[0];
-    ta = el("textarea", { class: "cvi-note", placeholder: "Note…", readonly: "readonly" }, [item.text || ""]);
+  } else if (item.type === "shape") {
+    body.style.background = item.fill || NOTE_COLORS[1];
+    if (item.shape === "ellipse") body.style.borderRadius = "50%";
+  } else { // note or text
+    if (item.type === "note") body.style.background = item.color || NOTE_COLORS[0];
+    ta = el("textarea", { class: "cvi-note", placeholder: item.type === "text" ? "Text…" : "Note…", readonly: "readonly" }, [item.text || ""]);
     ta.addEventListener("input", () => { item.text = ta.value; save.canvas(); });
     ta.addEventListener("blur", () => { node.classList.remove("editing"); ta.readOnly = true; save.canvas(); });
     body.append(ta);
@@ -2264,15 +2309,20 @@ function buildCanvasItem(item) {
 
   // Floating per-item toolbar (visible only when this is the sole selection)
   const tools = el("div", { class: "cvi-tools" }, []);
-  if (item.type === "note") {
+  const colorKey = item.type === "shape" ? "fill" : item.type === "note" ? "color" : null;
+  if (colorKey) {
     const palette = el("div", { class: "cvi-palette" }, NOTE_COLORS.map((col) =>
       el("button", { class: "cvi-swatch", style: `background:${col}`, title: col,
-        onclick: (e) => { e.stopPropagation(); item.color = col; body.style.background = col; palette.classList.remove("open"); save.canvas(); } })));
+        onclick: (e) => { e.stopPropagation(); beginChange(); item[colorKey] = col; body.style.background = col; palette.classList.remove("open"); save.canvas(); } })));
     tools.append(el("div", { class: "cvi-color-wrap" }, [
       el("button", { class: "cvi-tool", title: "Colour", text: "🎨",
         onclick: (e) => { e.stopPropagation(); palette.classList.toggle("open"); } }),
       palette,
     ]));
+  }
+  if (item.type === "shape") {
+    tools.append(el("button", { class: "cvi-tool", title: "Rectangle / ellipse", text: item.shape === "ellipse" ? "▭" : "⬭",
+      onclick: (e) => { e.stopPropagation(); beginChange(); item.shape = item.shape === "ellipse" ? "rect" : "ellipse"; save.canvas(); renderCanvas(); selectOnly(item.id); } }));
   }
   tools.append(el("button", { class: "cvi-tool", title: "Duplicate (Ctrl/⌘+D)", text: "⧉",
     onclick: (e) => { e.stopPropagation(); duplicateCanvasItem(item); } }));
@@ -2318,6 +2368,7 @@ function handleCanvasFile(file) {
       const h = Math.max(80, Math.round(w * (dim.h / (dim.w || 1))));
       const pos = canvasPlacePos(w, h);
       const id = uid();
+      beginChange();
       canvasItems.push({ id, type: "image", path, x: pos.x, y: pos.y, w, h, z: ++canvasZ });
       save.canvas();
       renderCanvas();
@@ -2332,6 +2383,7 @@ function handleCanvasFile(file) {
 
 function addCanvasNote() {
   if (!canvasReady()) return;
+  beginChange();
   const pos = canvasPlacePos(200, 150);
   const item = { id: uid(), type: "note", text: "", color: NOTE_COLORS[0], x: pos.x, y: pos.y, w: 200, h: 150, z: ++canvasZ };
   canvasItems.push(item);
@@ -2340,6 +2392,30 @@ function addCanvasNote() {
   selectOnly(item.id);
   const node = canvasNodes.get(item.id);
   if (node) enterNoteEdit(item, node);
+}
+
+function addText() {
+  if (!canvasReady()) return;
+  beginChange();
+  const pos = canvasPlacePos(220, 64);
+  const item = { id: uid(), type: "text", text: "", x: pos.x, y: pos.y, w: 220, h: 64, z: ++canvasZ };
+  canvasItems.push(item);
+  save.canvas();
+  renderCanvas();
+  selectOnly(item.id);
+  const node = canvasNodes.get(item.id);
+  if (node) enterNoteEdit(item, node);
+}
+
+function addShape() {
+  if (!canvasReady()) return;
+  beginChange();
+  const pos = canvasPlacePos(170, 120);
+  const item = { id: uid(), type: "shape", shape: "rect", fill: NOTE_COLORS[1], x: pos.x, y: pos.y, w: 170, h: 120, z: ++canvasZ };
+  canvasItems.push(item);
+  save.canvas();
+  renderCanvas();
+  selectOnly(item.id);
 }
 
 function onCanvasKeyDown(e) {
@@ -2354,6 +2430,8 @@ function onCanvasKeyDown(e) {
   }
   if (typing) return;
   const mod = e.metaKey || e.ctrlKey;
+  if (mod && (e.key === "z" || e.key === "Z")) { e.preventDefault(); if (e.shiftKey) redoCanvas(); else undoCanvas(); return; }
+  if (mod && (e.key === "y" || e.key === "Y")) { e.preventDefault(); redoCanvas(); return; }
   if (mod && (e.key === "a" || e.key === "A")) { e.preventDefault(); canvasSel = new Set(canvasItems.map((x) => x.id)); updateSelClasses(); return; }
   if (mod && (e.key === "c" || e.key === "C")) { e.preventDefault(); copyCanvasSelection(); return; }
   if (!canvasSel.size) return;
@@ -2362,6 +2440,7 @@ function onCanvasKeyDown(e) {
   else if (mod && (e.key === "d" || e.key === "D")) { e.preventDefault(); duplicateItems(items); }
   else if (e.key.startsWith("Arrow")) {
     e.preventDefault();
+    beginChange("nudge");
     const s = e.shiftKey ? 10 : 1;
     const dx = e.key === "ArrowLeft" ? -s : e.key === "ArrowRight" ? s : 0;
     const dy = e.key === "ArrowUp" ? -s : e.key === "ArrowDown" ? s : 0;
@@ -2382,6 +2461,9 @@ function initCanvas() {
     $("#canvas-file").value = "";
   });
   $("#canvas-add-note").addEventListener("click", addCanvasNote);
+  const at = $("#canvas-add-text"), as = $("#canvas-add-shape");
+  if (at) at.addEventListener("click", addText);
+  if (as) as.addEventListener("click", addShape);
 
   const zi = $("#canvas-zoom-in"), zo = $("#canvas-zoom-out"), zf = $("#canvas-fit"), zp = $("#canvas-zoom-pct");
   if (zi) zi.addEventListener("click", () => zoomAtCenter(1.2));

@@ -36,8 +36,14 @@ shipped; Phases 2–3 pending).
   `#canvas-file`, `#canvas-status`, `#canvas-hint`, the overlay `#canvas-guides` (holds
   alignment guides + the marquee), and the zoom bar
   `#canvas-zoom-in`/`#canvas-zoom-out`/`#canvas-zoom-pct`/`#canvas-fit`.
-- **Data model:** item `{ id, type: "image"|"note", path?, text?, color?, x, y, w, h, z }`
-  (unchanged — positions are world coords).
+- **Data model:** item `{ id, type: "image"|"note"|"text"|"shape", x, y, w, h, z, ... }` —
+  image: `path`; note: `text`+`color`; text: `text` (transparent, no chrome); shape:
+  `shape:"rect"|"ellipse"`+`fill`. Positions are world coords. New types are additive to
+  `org.canvas` (no migration).
+- **Undo/redo:** per-device, in-memory snapshot stacks `canvasPast`/`canvasFuture`.
+  `beginChange(tag?)` snapshots BEFORE a mutation (call it in any new mutating action; `tag`
+  coalesces a repeated gesture like arrow-nudge); `undoCanvas`/`redoCanvas` (⌘/Ctrl+Z /
+  Shift+Z). `pushCapped` bounds the stack (unit-tested).
 - **Sync:** `org.canvas` syncs item path + geometry; **images live in the Supabase Storage
   bucket `canvas`**, not localStorage. `org.canvasview` does NOT sync.
 
@@ -54,9 +60,10 @@ shipped; Phases 2–3 pending).
 - After mutating item state: `save.canvas(); renderCanvas();`. After a viewport change:
   `applyViewTransform(); saveCanvasView();`.
 - Depends on **sync-feature** for the Supabase client `sb` — coordinate on auth/Storage.
-- Multi-select, marquee, snapping/alignment guides, colour palette, and copy/paste are built
-  (Phase 2). Text/shapes, connectors, minimap, undo/redo, and pinch/touch are **not yet
-  built** (Phase 3).
+- Built so far: pan/zoom + select (P1); multi-select/marquee/snapping/palette/copy-paste
+  (P2); **text elements, shapes (rect/ellipse), and undo/redo** (P3a). **Not yet built**:
+  connectors/arrows, minimap, pinch/touch (later Phase 3 follow-ups).
+- When adding any new mutating action, call `beginChange()` first so undo captures it.
 - Served-asset change → bump `?v=`, `npm test`, ship via the `deploy` skill.
 
 Return a concise summary of files/lines changed.
