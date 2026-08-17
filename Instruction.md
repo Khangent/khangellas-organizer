@@ -48,6 +48,9 @@ login) — the GitHub repo is public, so **no secrets are ever committed**.
   pattern for adding a feature or view.
 - **[docs/workflow.md](docs/workflow.md)** — running, the test harness in detail, and the
   full deploy / GitHub Pages procedure.
+- **[docs/testing.md](docs/testing.md)** — the guardrails ("backpressure"): the 4-layer test
+  harness, verify-after-commit rule, deploy safety gates, how the deploy skill was hardened,
+  and the app's runtime sync throttling.
 
 ## Skills
 Reusable procedures live in `.claude/skills/<name>/SKILL.md` (auto-discovered):
