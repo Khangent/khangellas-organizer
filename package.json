@@ -1,0 +1,10 @@
+{
+  "name": "khangellas-organizer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Personal organizer web app (vanilla HTML/CSS/JS). Tests are zero-dependency Node checks.",
+  "scripts": {
+    "test": "node test/run.mjs",
+    "lint": "node --check app.js && node --check tcg-data.js"
+  }
+}
