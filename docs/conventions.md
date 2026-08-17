@@ -1,0 +1,42 @@
+# Conventions
+
+Coding standards and the pattern for extending the app. See
+[../Instruction.md](../Instruction.md) for the golden rules.
+
+## Style
+- 2-space indent, semicolons, `const`/`let`, double quotes.
+- Small pure helpers; `// ===` comment banners between modules.
+- **Match the surrounding code** — comment density and naming should read like `app.js`.
+- `uid()` for all ids; `org.*` for all localStorage keys.
+
+## DOM construction
+Always build DOM with the `el(tag, props, children)` helper — never string-concatenate HTML.
+- `class` → `className`, `text` → `textContent`, `onXxx` → `addEventListener(xxx)`.
+- Other props → `setAttribute`. Falsy children are skipped.
+- Query with `$(sel)` / `$$(sel)` (wrappers over `querySelector`/`querySelectorAll`).
+
+Each feature re-renders its list from state: mutate state → `save.x()` → `renderX()` →
+`updateBadges()`.
+
+## Security
+- **Never hardcode secrets.** API keys stay in `localStorage`; only the Supabase **anon**
+  key (safe to expose) is in source. The repo is public — nothing sensitive is committed.
+
+## Adding a feature or view (follow the existing pattern)
+1. **State:** `let x = store.get("org.x", default)` and `save.x = () => store.set("org.x", x)`.
+2. **View:** add `<section class="view" id="view-x">` in `index.html` **and** a matching
+   `<button class="menu-item" data-view="x">` in the sidebar (the test enforces this pair).
+3. **Render:** write `renderX()` that clears its container and rebuilds from state via `el()`.
+4. **Wire:** attach handlers; after each mutation call `save.x(); renderX(); updateBadges();`.
+5. **Init:** call `renderX()` (and any `initX()`) in the Init block at the bottom of `app.js`.
+6. **Sync (optional):** to sync across devices, add `"org.x"` to `SYNC_KEYS` **and** load it
+   in `applyRemoteState`.
+7. **Ship:** bump `?v=` in `index.html`, `npm test`, commit, push (see
+   [workflow.md](workflow.md)).
+
+## Don'ts
+- Don't add a build step or npm **runtime** dependencies without a deliberate decision.
+- Don't reintroduce a cloud relay for the AI endpoint (VPN-only — see
+  [architecture.md](architecture.md)).
+- Don't put per-device values (like the chat nickname) into `SYNC_KEYS`.
+- Prefer graceful degradation when signed out/offline (guard on `sb` / `syncUser`).
