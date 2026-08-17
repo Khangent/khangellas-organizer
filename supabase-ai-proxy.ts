@@ -34,27 +34,41 @@ Deno.serve(async (req) => {
     return new Response(null, { status: 204, headers: CORS });
   }
 
-  const url = new URL(req.url);
-  // Path after the function name, e.g. /ai-proxy/v1/chat/completions -> /v1/chat/completions
-  const path = url.pathname.replace(/^\/ai-proxy/, "") || "/v1/chat/completions";
+  try {
+    const url = new URL(req.url);
+    // Path after the function name, e.g. /ai-proxy/v1/chat/completions -> /v1/chat/completions
+    const path = url.pathname.replace(/^\/ai-proxy/, "") || "/v1/chat/completions";
 
-  // Forward only what the upstream needs (the client's aikeys Bearer key).
-  const fwd = new Headers();
-  const auth = req.headers.get("Authorization");
-  if (auth) fwd.set("Authorization", auth);
-  const ct = req.headers.get("Content-Type");
-  if (ct) fwd.set("Content-Type", ct);
+    // Forward only what the upstream needs (the client's aikeys Bearer key).
+    const fwd = new Headers();
+    const auth = req.headers.get("Authorization");
+    if (auth) fwd.set("Authorization", auth);
+    fwd.set("Content-Type", req.headers.get("Content-Type") || "application/json");
 
-  const hasBody = req.method !== "GET" && req.method !== "HEAD";
-  const body = hasBody ? await req.arrayBuffer() : undefined;
+    const hasBody = req.method !== "GET" && req.method !== "HEAD";
+    const body = hasBody ? await req.arrayBuffer() : undefined;
 
-  const upstream = await fetch(UPSTREAM + path + url.search, {
-    method: req.method,
-    headers: fwd,
-    body,
-  });
+    const upstream = await fetch(UPSTREAM + path + url.search, {
+      method: req.method,
+      headers: fwd,
+      body,
+    });
 
-  const headers = new Headers(upstream.headers);
-  for (const [k, v] of Object.entries(CORS)) headers.set(k, v);
-  return new Response(upstream.body, { status: upstream.status, headers });
+    // Read the full body and set only clean headers — copying the upstream's
+    // Content-Encoding/Content-Length onto a decoded body breaks the runtime.
+    const buf = await upstream.arrayBuffer();
+    return new Response(buf, {
+      status: upstream.status,
+      headers: {
+        ...CORS,
+        "Content-Type": upstream.headers.get("Content-Type") || "application/json",
+      },
+    });
+  } catch (e) {
+    // Surface the real error to the browser (with CORS) instead of a blank 500.
+    return new Response(JSON.stringify({ error: "relay_error", detail: String(e) }), {
+      status: 502,
+      headers: { ...CORS, "Content-Type": "application/json" },
+    });
+  }
 });
