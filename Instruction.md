@@ -46,6 +46,8 @@ login) — the GitHub repo is public, so **no secrets are ever committed**.
   map, sync/AI/canvas design rationale.
 - **[docs/conventions.md](docs/conventions.md)** — coding standards + the step-by-step
   pattern for adding a feature or view.
+- **[docs/rpi.md](docs/rpi.md)** — Research → Plan → Implement + Frequent Intentional
+  Compaction: the plan-first workflow, artifact conventions, and context management.
 - **[docs/workflow.md](docs/workflow.md)** — running, the test harness in detail, and the
   full deploy / GitHub Pages procedure.
 - **[docs/backpressure.md](docs/backpressure.md)** — backpressure (automated feedback loops):
