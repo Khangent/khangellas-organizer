@@ -2,7 +2,8 @@
 
 A reference for the quality gates ("backpressure") that protect Khangella's Organizer — the
 test harness, the standing verification rule, the deploy safety gates, how the deploy skill
-was hardened, and the app's own runtime backpressure. See [workflow.md](workflow.md) for the
+was hardened, and the app's own runtime backpressure. For the concept + how it maps to this
+project see **[backpressure.md](backpressure.md)**; see [workflow.md](workflow.md) for the
 day-to-day run/verify/deploy commands and [../Instruction.md](../Instruction.md) for the
 lean overview.
 
