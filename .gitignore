@@ -2,3 +2,7 @@ Test1.jpeg
 *.jpeg
 Plan.md
 make_icons.py
+.DS_Store
+# CI workflow can't be pushed from this environment (needs the `workflow` OAuth scope).
+# It's kept on disk for reference — add it to the repo via the GitHub web UI.
+.github/workflows/

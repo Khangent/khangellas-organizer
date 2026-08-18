@@ -4,7 +4,7 @@ git_commit: e44eed86620f1531843c26bd107e6234c089e1ce
 branch: main
 topic: "Our Garden — co-op idle game (MVP)"
 tags: [plan, idle-game, garden]
-status: awaiting-confirmation
+status: shipped
 ---
 
 # Plan: Our Garden — co-op idle game (MVP)
@@ -41,14 +41,14 @@ One shared garden both partners tend, synced like everything else.
 ## Steps
 Mark `[x]` when the step's **Verify** passes.
 
-- [ ] **Step 1 — State, config & pure helpers (+ unit tests)**
+- [x] **Step 1 — State, config & pure helpers (+ unit tests)** — done, 30/30 green.
   - Files: `app.js` (new "Garden (idle)" section: `garden` state, `save.idle`, `PLANTS`,
     `sunGain`/`growProgress`/`isRipe`/`plotCost`/`settleSun`, `seedGarden()`), `test/run.mjs`.
   - Change: add state + pure helpers; export the helpers for tests; seed a default garden
     (3 plots, `sunRate 1`, `sprout` unlocked) if none.
   - Verify: `npm test` green with new unit checks for `sunGain`/`growProgress`/`isRipe`/`plotCost`.
 
-- [ ] **Step 2 — View + rendering (display only)**
+- [x] **Step 2 — View + rendering** — done (built with Step 3); structure + smoke green.
   - Files: `index.html` (sidebar `data-view="garden"` + `#view-garden`: sun/coins/rate bar,
     `#garden-plots` grid, shop row), `app.js` (`renderGarden()`, `initGarden()`, add both to
     the Init block; 1 s UI tick gated to the active view), `styles.css` (garden styles).
@@ -56,7 +56,7 @@ Mark `[x]` when the step's **Verify** passes.
   - Verify: `npm test` (structure: nav↔view parity + all `#ids` exist); load the app → Garden
     tab shows the seeded garden and live-ticking sunlight.
 
-- [ ] **Step 3 — Interactions + offline accrual**
+- [x] **Step 3 — Interactions + offline accrual** — done (plant/harvest/buy/unlock, settleSun on load, 20 s autosave, 1 s UI tick).
   - Files: `app.js`.
   - Change: `plantSeed(plot, type)`, `harvest(plot)`, `buyPlot()`, `buySunLamp()` (raise
     `sunRate`), `unlockPlant(type)` — each `settleSun()` → mutate → `save.idle()` →
@@ -64,7 +64,7 @@ Mark `[x]` when the step's **Verify** passes.
   - Verify: `npm test`; manual — plant a seed, watch it grow, harvest → coins; buy a plot/lamp;
     reload after a wait and confirm sunlight + ripened plants accrued while away.
 
-- [ ] **Step 4 — Sync, badge, subagent, ship**
+- [x] **Step 4 — Sync, badge, subagent, ship** — `org.idle` synced + reloaded; ripe badge; garden-feature subagent; `?v=34`.
   - Files: `app.js` (`"org.idle"` into `SYNC_KEYS`; reload `garden` + `renderGarden()` in
     `applyRemoteState`; `updateBadges` sets `badge-garden` = ripe-plot count), `index.html`
     (`#badge-garden`), `.claude/agents/garden-feature.md` (new subagent), `Instruction.md`

@@ -37,6 +37,7 @@ let raids = store.get("org.raids", []);
 let recipes = store.get("org.recipes", []);
 let games = store.get("org.games", []);
 let canvasItems = store.get("org.canvas", []);
+let garden = store.get("org.idle", null);
 
 const save = {
   todos: () => store.set("org.todos", todos),
@@ -48,6 +49,7 @@ const save = {
   games: () => store.set("org.games", games),
   canvas: () => store.set("org.canvas", canvasItems),
   callegend: () => store.set("org.callegend", calLegend),
+  idle: () => store.set("org.idle", garden),
 };
 
 // ---------- Small DOM helpers ----------
@@ -125,6 +127,7 @@ function updateBadges() {
   setBadge("raids", rs.total - rs.done);
   setBadge("tcg", TCG_ALL.filter((c) => !tcgOwned[c.id]).length);
   setBadge("games", games.filter((g) => g.status === "want").length);
+  setBadge("garden", gardenRipeCount());
 }
 
 // ============================================================
@@ -1245,7 +1248,7 @@ const SUPABASE_ANON =
 // Everything syncs, incl. the AI config (org.ai: endpoint + key + model) so the
 // AI Assistant works on every signed-in device. Only the AI chat history
 // (org.aichat) and per-device nickname stay local.
-const SYNC_KEYS = ["org.todos", "org.shopping", "org.events", "org.reminders", "org.raids", "org.tcg", "org.recipes", "org.games", "org.canvas", "org.callegend", "org.theme", "org.ai"];
+const SYNC_KEYS = ["org.todos", "org.shopping", "org.events", "org.reminders", "org.raids", "org.tcg", "org.recipes", "org.games", "org.canvas", "org.callegend", "org.theme", "org.ai", "org.idle"];
 const syncClientId = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 let sb = null;
@@ -1298,10 +1301,11 @@ function applyRemoteState(data) {
     games = store.get("org.games", []);
     canvasItems = store.get("org.canvas", []);
     calLegend = store.get("org.callegend", {});
+    garden = store.get("org.idle", garden);
     if ("org.ai" in data) { aiCfg = { ...AI_DEFAULTS, ...store.get("org.ai", {}) }; initAiConfigUI(); }
     if (data["org.theme"]) applyTheme(data["org.theme"]);
     renderTodos(); renderShopping(); renderCalLegend(); renderCalendar(); renderReminders();
-    renderRaids(); renderTCG(); renderRecipes(); renderGames(); renderCanvas(); updateBadges();
+    renderRaids(); renderTCG(); renderRecipes(); renderGames(); renderCanvas(); renderGarden(); updateBadges();
   } finally {
     syncApplying = false;
   }
@@ -2661,6 +2665,200 @@ function initCanvas() {
 }
 
 // ============================================================
+//  Garden (co-op idle game — "Our Garden")
+// ============================================================
+// Plant types: cost in sunlight, grow in seconds, yield in coins, unlock in coins.
+const PLANTS = {
+  sprout:    { name: "Sprout",    emoji: "🌱", cost: 15,  grow: 30,  yield: 12,  unlock: 0 },
+  flower:    { name: "Flower",    emoji: "🌸", cost: 60,  grow: 180, yield: 70,  unlock: 120 },
+  sunflower: { name: "Sunflower", emoji: "🌻", cost: 180, grow: 600, yield: 260, unlock: 600 },
+};
+const PLANT_ORDER = ["sprout", "flower", "sunflower"];
+const GARDEN_TICK = 1000; // UI refresh cadence while the view is open
+
+// --- Pure helpers (unit-tested in test/run.mjs) ---
+const sunGain = (rate, elapsedMs) => (rate * Math.max(0, elapsedMs)) / 1000;
+const growProgress = (growSec, planted, now) =>
+  planted == null ? 0 : Math.max(0, Math.min(1, (now - planted) / (growSec * 1000)));
+const isRipe = (growSec, planted, now) => planted != null && now - planted >= growSec * 1000;
+const plotCost = (nPlots) => Math.round(50 * Math.pow(1.6, nPlots));      // rising coin price
+const sunLampCost = (rate) => Math.round(60 * Math.pow(1.7, rate - 1));   // rising coin price
+
+function seedGarden() {
+  return {
+    sun: 0, coins: 0, sunRate: 1, lastTick: Date.now(),
+    plots: Array.from({ length: 3 }, () => ({ id: uid(), plant: null, planted: null })),
+    unlocked: ["sprout"],
+    createdAt: new Date().toISOString(),
+  };
+}
+
+// Award sunlight accrued since the last settle (works across reloads / offline).
+function settleSun() {
+  if (!garden) return;
+  const now = Date.now();
+  garden.sun += sunGain(garden.sunRate, now - garden.lastTick);
+  garden.lastTick = now;
+}
+
+let gardenSelSeed = "sprout"; // which seed a plot-click plants (per device)
+let gardenTickCount = 0;
+
+function fmtDuration(sec) {
+  if (sec <= 0) return "ready";
+  if (sec < 60) return sec + "s";
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return m + "m" + (s ? " " + s + "s" : "");
+}
+function setGardenMsg(text) {
+  const m = $("#garden-msg");
+  if (m) m.textContent = text || "";
+}
+
+// --- Actions (each settles sun first, then saves + re-renders) ---
+function plantSeed(plot, type) {
+  const p = PLANTS[type];
+  if (!garden || !p || plot.plant) return;
+  settleSun();
+  if (garden.sun < p.cost) { setGardenMsg(`Need ☀️ ${p.cost} to plant a ${p.name}.`); return; }
+  garden.sun -= p.cost;
+  plot.plant = type; plot.planted = Date.now();
+  save.idle(); renderGarden(); updateBadges();
+}
+function harvest(plot) {
+  if (!garden || !plot.plant) return;
+  const p = PLANTS[plot.plant];
+  if (!isRipe(p.grow, plot.planted, Date.now())) return;
+  settleSun();
+  garden.coins += p.yield;
+  plot.plant = null; plot.planted = null;
+  save.idle(); renderGarden(); updateBadges();
+  setGardenMsg(`Harvested a ${p.name} for 🪙 ${p.yield}!`);
+}
+function buyPlot() {
+  if (!garden) return;
+  settleSun();
+  const cost = plotCost(garden.plots.length);
+  if (garden.coins < cost) { setGardenMsg(`Need 🪙 ${cost} for a new plot.`); return; }
+  garden.coins -= cost;
+  garden.plots.push({ id: uid(), plant: null, planted: null });
+  save.idle(); renderGarden();
+}
+function buySunLamp() {
+  if (!garden) return;
+  settleSun();
+  const cost = sunLampCost(garden.sunRate);
+  if (garden.coins < cost) { setGardenMsg(`Need 🪙 ${cost} for a sun lamp.`); return; }
+  garden.coins -= cost; garden.sunRate += 1;
+  save.idle(); renderGarden();
+}
+function unlockPlant(type) {
+  const p = PLANTS[type];
+  if (!garden || !p || garden.unlocked.includes(type)) return;
+  settleSun();
+  if (garden.coins < p.unlock) { setGardenMsg(`Need 🪙 ${p.unlock} to unlock the ${p.name}.`); return; }
+  garden.coins -= p.unlock; garden.unlocked.push(type); gardenSelSeed = type;
+  save.idle(); renderGarden();
+}
+
+// --- Rendering ---
+function buildPlot(plot, now) {
+  if (!plot.plant) {
+    return el("div", { class: "garden-plot empty", title: "Plant the selected seed",
+      onclick: () => plantSeed(plot, gardenSelSeed) }, [
+      el("span", { class: "garden-plot-emoji", text: "＋" }),
+      el("span", { class: "garden-plot-label", text: "Plant" }),
+    ]);
+  }
+  const p = PLANTS[plot.plant];
+  if (isRipe(p.grow, plot.planted, now)) {
+    return el("div", { class: "garden-plot ripe", title: `Harvest for 🪙 ${p.yield}`,
+      onclick: () => harvest(plot) }, [
+      el("span", { class: "garden-plot-emoji", text: p.emoji }),
+      el("span", { class: "garden-plot-label", text: `Harvest +${p.yield}🪙` }),
+    ]);
+  }
+  const prog = growProgress(p.grow, plot.planted, now);
+  const remain = Math.ceil((p.grow * 1000 - (now - plot.planted)) / 1000);
+  return el("div", { class: "garden-plot growing", title: `${p.name} growing…` }, [
+    el("span", { class: "garden-plot-emoji", style: `opacity:${(0.4 + prog * 0.6).toFixed(2)};transform:scale(${(0.6 + prog * 0.4).toFixed(2)})`, text: p.emoji }),
+    el("div", { class: "garden-progress" }, [el("div", { class: "garden-progress-fill", style: `width:${Math.round(prog * 100)}%` })]),
+    el("span", { class: "garden-plot-label", text: fmtDuration(remain) }),
+  ]);
+}
+function renderGardenSeedbar() {
+  const bar = $("#garden-seedbar");
+  if (!bar) return;
+  bar.innerHTML = "";
+  PLANT_ORDER.forEach((key) => {
+    const p = PLANTS[key];
+    if (garden.unlocked.includes(key)) {
+      bar.append(el("button", {
+        class: "garden-seed" + (gardenSelSeed === key ? " sel" : ""),
+        title: `Plant costs ☀️ ${p.cost} · grows in ${fmtDuration(p.grow)} · yields 🪙 ${p.yield}`,
+        onclick: () => { gardenSelSeed = key; renderGarden(); },
+      }, [el("span", { text: p.emoji }), el("span", { class: "garden-seed-cost", text: `☀️${p.cost}` })]));
+    } else {
+      bar.append(el("button", { class: "garden-seed locked", title: `Unlock the ${p.name}`,
+        onclick: () => unlockPlant(key) }, [el("span", { text: "🔒" + p.emoji }), el("span", { class: "garden-seed-cost", text: `🪙${p.unlock}` })]));
+    }
+  });
+}
+function renderGardenShop() {
+  const shop = $("#garden-shop");
+  if (!shop) return;
+  shop.innerHTML = "";
+  shop.append(
+    el("button", { class: "garden-buy", onclick: buyPlot, text: `＋ Plot (🪙 ${plotCost(garden.plots.length)})` }),
+    el("button", { class: "garden-buy", onclick: buySunLamp, title: "Increase sunlight per second",
+      text: `☀️ Sun lamp (🪙 ${sunLampCost(garden.sunRate)})` }),
+  );
+}
+function renderGarden() {
+  if (!garden) return;
+  const stats = $("#garden-stats");
+  if (stats) {
+    stats.innerHTML = "";
+    stats.append(
+      el("span", { class: "garden-stat", text: `☀️ ${Math.floor(garden.sun)}` }),
+      el("span", { class: "garden-stat", text: `🪙 ${garden.coins}` }),
+      el("span", { class: "garden-stat muted", text: `+${garden.sunRate}/s` }),
+    );
+  }
+  renderGardenSeedbar();
+  const grid = $("#garden-plots");
+  if (grid) {
+    grid.innerHTML = "";
+    const now = Date.now();
+    garden.plots.forEach((plot) => grid.append(buildPlot(plot, now)));
+  }
+  renderGardenShop();
+}
+
+// Count of ripe plots (drives the sidebar badge nudge).
+function gardenRipeCount() {
+  if (!garden) return 0;
+  const now = Date.now();
+  return garden.plots.filter((pl) => pl.plant && isRipe(PLANTS[pl.plant].grow, pl.planted, now)).length;
+}
+
+function initGarden() {
+  if (!garden) garden = seedGarden();
+  settleSun();          // award sunlight accrued while away
+  save.idle();
+  renderGarden();
+  setInterval(() => {
+    if (!garden) return;
+    settleSun();                                   // keep sunlight current (in-memory)
+    gardenTickCount = (gardenTickCount + 1) % 20;
+    if (gardenTickCount === 0) save.idle();        // ~20 s autosave so offline math stays correct
+    const v = $("#view-garden");
+    if (v && v.classList.contains("active")) renderGarden();
+    updateBadges();
+  }, GARDEN_TICK);
+}
+
+// ============================================================
 //  Init
 // ============================================================
 if (!raids.length) {
@@ -2684,6 +2882,7 @@ updateBadges();
 initRecipes();
 initCanvas();
 initChat();
+initGarden();
 initSync();
 refreshNotifNotice();
 

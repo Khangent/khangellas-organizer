@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icon-180.png?v=24" />
   <link rel="manifest" href="manifest.webmanifest?v=24" />
   <meta name="theme-color" content="#ec4899" />
-  <link rel="stylesheet" href="styles.css?v=33" />
+  <link rel="stylesheet" href="styles.css?v=34" />
 </head>
 <body>
   <div class="app">
@@ -49,6 +49,10 @@
         <button class="menu-item" data-view="games">
           <span class="icon">🎮</span><span>Games</span>
           <span class="badge" id="badge-games"></span>
+        </button>
+        <button class="menu-item" data-view="garden">
+          <span class="icon">🌻</span><span>Garden</span>
+          <span class="badge" id="badge-garden"></span>
         </button>
         <button class="menu-item" data-view="canvas">
           <span class="icon">🖼️</span><span>Canvas</span>
@@ -276,6 +280,21 @@
         </form>
       </section>
 
+      <!-- Garden view (idle game) -->
+      <section class="view" id="view-garden">
+        <header class="view-header">
+          <h2>Our Garden</h2>
+          <p class="view-sub">A shared idle garden — sunlight builds up even while you're away. Plant a seed, let it grow, harvest for coins. 🌻</p>
+        </header>
+        <div class="garden-bar">
+          <div class="garden-stats" id="garden-stats"></div>
+          <span class="garden-msg" id="garden-msg"></span>
+        </div>
+        <div class="garden-seedbar" id="garden-seedbar"></div>
+        <div class="garden-plots" id="garden-plots"></div>
+        <div class="garden-shop" id="garden-shop"></div>
+      </section>
+
       <!-- Sync view -->
       <section class="view" id="view-sync">
         <header class="view-header">
@@ -341,7 +360,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="tcg-data.js?v=33"></script>
-  <script src="app.js?v=33"></script>
+  <script src="tcg-data.js?v=34"></script>
+  <script src="app.js?v=34"></script>
 </body>
 </html>

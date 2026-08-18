@@ -162,7 +162,7 @@ function runApp() {
   const windowStub = { addEventListener() {}, removeEventListener() {} };
   const noop = () => {};
   const exportsTail =
-    "\n;return {num,round1,macroTotals,kcalOf,parseSteamId,personGold,raidStats,fmtGold,GAME_STATUS,PRIORITY_RANK,mkIngredient,GAME_ORDER,clampZoom,screenToWorld,worldToScreen,rectsOverlap,computeSnap,pushCapped,edgePoint};";
+    "\n;return {num,round1,macroTotals,kcalOf,parseSteamId,personGold,raidStats,fmtGold,GAME_STATUS,PRIORITY_RANK,mkIngredient,GAME_ORDER,clampZoom,screenToWorld,worldToScreen,rectsOverlap,computeSnap,pushCapped,edgePoint,sunGain,growProgress,isRipe,plotCost};";
   // eslint-disable-next-line no-new-func
   const factory = new Function(
     "window", "document", "localStorage", "alert", "confirm", "prompt", "console",
@@ -192,7 +192,8 @@ if (!api) {
   check("unit tests", () => assert(false, "skipped — app.js failed to load"));
 } else {
   const { num, round1, macroTotals, kcalOf, parseSteamId, personGold, raidStats, fmtGold,
-          clampZoom, screenToWorld, worldToScreen, rectsOverlap, computeSnap, pushCapped, edgePoint } = api;
+          clampZoom, screenToWorld, worldToScreen, rectsOverlap, computeSnap, pushCapped, edgePoint,
+          sunGain, growProgress, isRipe, plotCost } = api;
 
   check("num() coerces only positive finite numbers", () => {
     eq(num("5"), 5); eq(num("2.5"), 2.5); eq(num("abc"), 0); eq(num("-3"), 0);
@@ -250,6 +251,21 @@ if (!api) {
     eq(edgePoint(box, 200, 50), { x: 100, y: 50 }); // right of box -> right-edge midpoint
     eq(edgePoint(box, 50, 200), { x: 50, y: 100 }); // below box  -> bottom-edge midpoint
     eq(edgePoint(box, 50, 50), { x: 50, y: 50 });   // target at centre -> centre
+  });
+  check("garden: sunGain() = rate × seconds elapsed", () => {
+    eq(sunGain(1, 1000), 1); eq(sunGain(2, 5000), 10); eq(sunGain(3, -50), 0);
+  });
+  check("garden: growProgress() clamps 0..1 over the grow window", () => {
+    eq(growProgress(10, 0, 5000), 0.5);   // 10s grow, 5s in -> half
+    eq(growProgress(10, 1000, 1000), 0);  // just planted
+    eq(growProgress(10, 0, 20000), 1);    // capped at ripe
+    eq(growProgress(10, null, 5000), 0);  // empty plot
+  });
+  check("garden: isRipe() true once grow time elapses", () => {
+    eq(isRipe(10, 0, 9999), false); eq(isRipe(10, 0, 10000), true); eq(isRipe(10, null, 1e9), false);
+  });
+  check("garden: plotCost() rises with plot count", () => {
+    eq(plotCost(0), 50); eq(plotCost(3) > plotCost(2), true);
   });
 }
 
