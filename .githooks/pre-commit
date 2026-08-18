@@ -1,0 +1,10 @@
+#!/bin/sh
+# Backpressure: run the zero-dependency test harness before every commit.
+# Enable once per clone with:  git config core.hooksPath .githooks
+# Bypass in a pinch with:      git commit --no-verify
+if ! node test/run.mjs; then
+  echo ""
+  echo "✗ Commit blocked — the test harness failed (see above)."
+  echo "  Fix it and re-commit, or override with: git commit --no-verify"
+  exit 1
+fi

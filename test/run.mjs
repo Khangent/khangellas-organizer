@@ -99,6 +99,29 @@ check("every init* function called at startup is defined", () => {
   for (const fn of called) assert(new RegExp(`function ${fn}\\b`).test(appSrc), `${fn}() is called but not defined`);
 });
 
+check("every SYNC_KEYS entry is reloaded in applyRemoteState()", () => {
+  const arr = appSrc.match(/const SYNC_KEYS = \[([^\]]*)\]/);
+  assert(arr, "SYNC_KEYS array not found");
+  const keys = (arr[1].match(/"([^"]+)"/g) || []).map((s) => s.replace(/"/g, ""));
+  const start = appSrc.indexOf("function applyRemoteState");
+  const end = appSrc.indexOf("async function pushStateNow");
+  assert(start !== -1 && end > start, "could not locate applyRemoteState()");
+  const body = appSrc.slice(start, end);
+  const missing = keys.filter((k) => !body.includes(k));
+  assert(missing.length === 0, "synced but not reloaded in applyRemoteState: " + missing.join(", "));
+});
+
+check("every save.X() call has a matching setter", () => {
+  const objBlock = (appSrc.match(/const save = \{([\s\S]*?)\};/) || [])[1] || "";
+  const defined = new Set([
+    ...[...objBlock.matchAll(/(\w+):\s*\(\)/g)].map((m) => m[1]),   // object-literal setters
+    ...[...appSrc.matchAll(/\bsave\.(\w+)\s*=/g)].map((m) => m[1]), // save.X = ... assignments
+  ]);
+  const called = [...new Set([...appSrc.matchAll(/\bsave\.(\w+)\(/g)].map((m) => m[1]))];
+  const missing = called.filter((k) => !defined.has(k));
+  assert(missing.length === 0, "save setter(s) missing for: " + missing.map((m) => "save." + m).join(", "));
+});
+
 // ------------------------------------------------------------
 // 3. SMOKE — execute app.js end-to-end against a DOM stub
 // ------------------------------------------------------------
