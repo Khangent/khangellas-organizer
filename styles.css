@@ -666,6 +666,7 @@ input[type="number"] { width: 80px; }
 .garden-seed .garden-seed-cost { font-size: 0.78rem; color: var(--text-muted); }
 .garden-seed.sel { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary); }
 .garden-seed.locked { opacity: 0.85; }
+.garden-canvas { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 52vh; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); cursor: pointer; margin-bottom: 16px; touch-action: manipulation; }
 .garden-plots { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .garden-plot { aspect-ratio: 1 / 1; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; user-select: none; padding: 8px; text-align: center; }
 .garden-plot.empty { cursor: pointer; color: var(--text-muted); border-style: dashed; }

@@ -2674,6 +2674,7 @@ const PLANTS = {
   sunflower: { name: "Sunflower", emoji: "🌻", cost: 180, grow: 600, yield: 260, unlock: 600 },
 };
 const PLANT_ORDER = ["sprout", "flower", "sunflower"];
+const PLANT_COLORS = { sprout: "#8bd17c", flower: "#f6a5c0", sunflower: "#ffd23f" };
 const GARDEN_TICK = 1000; // UI refresh cadence while the view is open
 
 // --- Pure helpers (unit-tested in test/run.mjs) ---
@@ -2683,6 +2684,9 @@ const growProgress = (growSec, planted, now) =>
 const isRipe = (growSec, planted, now) => planted != null && now - planted >= growSec * 1000;
 const plotCost = (nPlots) => Math.round(50 * Math.pow(1.6, nPlots));      // rising coin price
 const sunLampCost = (rate) => Math.round(60 * Math.pow(1.7, rate - 1));   // rising coin price
+// Which plot does a canvas x-coordinate fall on? (unit-tested)
+const plotIndexAtX = (x, w, n, pad) =>
+  (n <= 0 || x < pad || x > w - pad) ? -1 : Math.min(n - 1, Math.floor((x - pad) / ((w - 2 * pad) / n)));
 
 function seedGarden() {
   return {
@@ -2703,6 +2707,7 @@ function settleSun() {
 
 let gardenSelSeed = "sprout"; // which seed a plot-click plants (per device)
 let gardenTickCount = 0;
+let gardenCanvas = null, gardenCtx = null, gardenRaf = 0, gardenHover = -1;
 
 function fmtDuration(sec) {
   if (sec <= 0) return "ready";
@@ -2762,30 +2767,7 @@ function unlockPlant(type) {
 }
 
 // --- Rendering ---
-function buildPlot(plot, now) {
-  if (!plot.plant) {
-    return el("div", { class: "garden-plot empty", title: "Plant the selected seed",
-      onclick: () => plantSeed(plot, gardenSelSeed) }, [
-      el("span", { class: "garden-plot-emoji", text: "＋" }),
-      el("span", { class: "garden-plot-label", text: "Plant" }),
-    ]);
-  }
-  const p = PLANTS[plot.plant];
-  if (isRipe(p.grow, plot.planted, now)) {
-    return el("div", { class: "garden-plot ripe", title: `Harvest for 🪙 ${p.yield}`,
-      onclick: () => harvest(plot) }, [
-      el("span", { class: "garden-plot-emoji", text: p.emoji }),
-      el("span", { class: "garden-plot-label", text: `Harvest +${p.yield}🪙` }),
-    ]);
-  }
-  const prog = growProgress(p.grow, plot.planted, now);
-  const remain = Math.ceil((p.grow * 1000 - (now - plot.planted)) / 1000);
-  return el("div", { class: "garden-plot growing", title: `${p.name} growing…` }, [
-    el("span", { class: "garden-plot-emoji", style: `opacity:${(0.4 + prog * 0.6).toFixed(2)};transform:scale(${(0.6 + prog * 0.4).toFixed(2)})`, text: p.emoji }),
-    el("div", { class: "garden-progress" }, [el("div", { class: "garden-progress-fill", style: `width:${Math.round(prog * 100)}%` })]),
-    el("span", { class: "garden-plot-label", text: fmtDuration(remain) }),
-  ]);
-}
+// (plots are drawn on the canvas now — see drawGarden/drawPlant)
 function renderGardenSeedbar() {
   const bar = $("#garden-seedbar");
   if (!bar) return;
@@ -2826,13 +2808,9 @@ function renderGarden() {
     );
   }
   renderGardenSeedbar();
-  const grid = $("#garden-plots");
-  if (grid) {
-    grid.innerHTML = "";
-    const now = Date.now();
-    garden.plots.forEach((plot) => grid.append(buildPlot(plot, now)));
-  }
   renderGardenShop();
+  if (gardenCtx && gardenViewActive()) drawGarden(Date.now());
+  startGardenAnim();
 }
 
 // Count of ripe plots (drives the sidebar badge nudge).
@@ -2842,10 +2820,135 @@ function gardenRipeCount() {
   return garden.plots.filter((pl) => pl.plant && isRipe(PLANTS[pl.plant].grow, pl.planted, now)).length;
 }
 
+// --- Canvas scene (side-on garden bed, drawn with 2D primitives — no assets) ---
+const gardenDark = () => document.documentElement.getAttribute("data-theme") === "dark";
+function gardenViewActive() { const v = $("#view-garden"); return !!(v && v.classList.contains("active")); }
+
+function sizeGardenCanvas() {
+  if (!gardenCanvas || !gardenCtx) return;
+  const dpr = window.devicePixelRatio || 1;
+  const bw = Math.round(gardenCanvas.clientWidth * dpr), bh = Math.round(gardenCanvas.clientHeight * dpr);
+  if (bw && bh && (gardenCanvas.width !== bw || gardenCanvas.height !== bh)) { gardenCanvas.width = bw; gardenCanvas.height = bh; }
+  gardenCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function drawLeaf(ctx, x, y, size, angle) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
+  ctx.beginPath(); ctx.ellipse(size * 0.6, 0, size, size * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawPlant(ctx, x, baseY, slot, plot, i, now, dark) {
+  if (gardenHover === i) {
+    ctx.fillStyle = dark ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.4)";
+    ctx.beginPath(); ctx.ellipse(x, baseY + 6, slot * 0.4, 10, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  if (!plot.plant) {
+    ctx.fillStyle = dark ? "#4a3626" : "#8a5f38";
+    ctx.beginPath(); ctx.ellipse(x, baseY + 4, slot * 0.22, 7, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = dark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.35)";
+    ctx.font = "16px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("＋", x, baseY - 10);
+    return;
+  }
+  const p = PLANTS[plot.plant];
+  const ripe = isRipe(p.grow, plot.planted, now);
+  const prog = growProgress(p.grow, plot.planted, now);
+  const stemH = Math.min(slot * 0.95, 96) * (ripe ? 1 : Math.max(0.12, prog));
+  const sway = Math.sin(now / 700 + i) * (2 + 4 * prog);
+  const bob = ripe ? Math.sin(now / 300 + i) * 3 : 0;
+  const topX = x + sway, topY = baseY - stemH + bob;
+  ctx.strokeStyle = dark ? "#3f8f4f" : "#3fa14a"; ctx.lineWidth = 3; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(x, baseY); ctx.quadraticCurveTo((x + topX) / 2 + sway, baseY - stemH * 0.5, topX, topY); ctx.stroke();
+  if (prog > 0.25 || ripe) {
+    ctx.fillStyle = dark ? "#3f8f4f" : "#5cb85c";
+    const lx = (x + topX) / 2, ly = baseY - stemH * 0.5, ls = 8 + 6 * prog;
+    drawLeaf(ctx, lx, ly, ls, -0.6); drawLeaf(ctx, lx, ly, ls, Math.PI + 0.6);
+  }
+  const col = PLANT_COLORS[plot.plant] || "#f6a5c0";
+  const headR = ripe ? 13 : 4 + 8 * prog;
+  if (ripe) {
+    const g = ctx.createRadialGradient(topX, topY, 2, topX, topY, headR * 2.4);
+    g.addColorStop(0, "rgba(255,255,190,0.55)"); g.addColorStop(1, "rgba(255,255,190,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(topX, topY, headR * 2.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = col;
+    for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4 + now / 2200; ctx.beginPath(); ctx.ellipse(topX + Math.cos(a) * headR, topY + Math.sin(a) * headR, headR * 0.62, headR * 0.34, a, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = plot.plant === "sunflower" ? "#7a4a1e" : "#ffd23f";
+    ctx.beginPath(); ctx.arc(topX, topY, headR * 0.68, 0, Math.PI * 2); ctx.fill();
+  } else {
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(topX, topY, headR, 0, Math.PI * 2); ctx.fill();
+    const remain = Math.ceil((p.grow * 1000 - (now - plot.planted)) / 1000);
+    ctx.fillStyle = dark ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.45)";
+    ctx.font = "11px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+    ctx.fillText(fmtDuration(remain), x, baseY + 8);
+  }
+}
+
+function drawGarden(now) {
+  if (!gardenCtx || !gardenCanvas) return;
+  sizeGardenCanvas();
+  const w = gardenCanvas.clientWidth, h = gardenCanvas.clientHeight;
+  if (!w || !h || !garden) return;
+  const ctx = gardenCtx, dark = gardenDark();
+  const sky = ctx.createLinearGradient(0, 0, 0, h);
+  if (dark) { sky.addColorStop(0, "#1b2340"); sky.addColorStop(1, "#28374f"); }
+  else { sky.addColorStop(0, "#bfe6ff"); sky.addColorStop(1, "#eaf7ef"); }
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
+  // sun
+  const sunX = w * 0.84, sunY = h * 0.24, sunR = Math.min(w, h) * 0.09;
+  const glow = ctx.createRadialGradient(sunX, sunY, sunR * 0.3, sunX, sunY, sunR * 3);
+  glow.addColorStop(0, dark ? "rgba(255,220,150,0.5)" : "rgba(255,230,120,0.85)"); glow.addColorStop(1, "rgba(255,230,120,0)");
+  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(sunX, sunY, sunR * 3, 0, Math.PI * 2); ctx.fill();
+  ctx.save(); ctx.translate(sunX, sunY); ctx.rotate((now / 5000) % (Math.PI * 2));
+  ctx.strokeStyle = dark ? "rgba(255,220,150,0.35)" : "rgba(255,200,60,0.7)"; ctx.lineWidth = 2;
+  for (let k = 0; k < 12; k++) { ctx.rotate(Math.PI / 6); ctx.beginPath(); ctx.moveTo(sunR * 1.3, 0); ctx.lineTo(sunR * 1.95, 0); ctx.stroke(); }
+  ctx.restore();
+  ctx.fillStyle = dark ? "#ffd98a" : "#ffd23f"; ctx.beginPath(); ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2); ctx.fill();
+  // soil
+  const soilY = h * 0.66;
+  ctx.fillStyle = dark ? "#3a2a1e" : "#7a5230"; ctx.beginPath(); ctx.moveTo(0, soilY);
+  for (let x = 0; x <= w; x += w / 8) ctx.quadraticCurveTo(x + w / 16, soilY - 6, x + w / 8, soilY);
+  ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = dark ? "#2f5133" : "#6cbf59"; ctx.fillRect(0, soilY - 4, w, 6);
+  // plants
+  const n = garden.plots.length, pad = Math.max(24, w * 0.06), slot = (w - 2 * pad) / n;
+  garden.plots.forEach((plot, i) => drawPlant(ctx, pad + (i + 0.5) * slot, soilY, slot, plot, i, now, dark));
+}
+
+function gardenLoop() {
+  gardenRaf = 0;
+  if (gardenCtx && gardenViewActive()) { drawGarden(Date.now()); gardenRaf = requestAnimationFrame(gardenLoop); }
+}
+function startGardenAnim() { if (!gardenRaf && gardenCtx && gardenViewActive()) gardenRaf = requestAnimationFrame(gardenLoop); }
+
+function gardenPlotFromEvent(e) {
+  if (!garden || !gardenCanvas) return -1;
+  const rect = gardenCanvas.getBoundingClientRect();
+  const w = gardenCanvas.clientWidth, pad = Math.max(24, w * 0.06);
+  return plotIndexAtX(e.clientX - rect.left, w, garden.plots.length, pad);
+}
+function onGardenCanvasClick(e) {
+  const i = gardenPlotFromEvent(e);
+  if (i < 0) return;
+  const plot = garden.plots[i];
+  if (!plot.plant) plantSeed(plot, gardenSelSeed);
+  else if (isRipe(PLANTS[plot.plant].grow, plot.planted, Date.now())) harvest(plot);
+}
+function onGardenCanvasHover(e) { gardenHover = gardenPlotFromEvent(e); }
+
 function initGarden() {
   if (!garden) garden = seedGarden();
   settleSun();          // award sunlight accrued while away
   save.idle();
+  gardenCanvas = $("#garden-canvas");
+  gardenCtx = gardenCanvas && gardenCanvas.getContext ? gardenCanvas.getContext("2d") : null;
+  if (gardenCanvas) {
+    gardenCanvas.addEventListener("click", onGardenCanvasClick);
+    gardenCanvas.addEventListener("pointermove", onGardenCanvasHover);
+    gardenCanvas.addEventListener("pointerleave", () => { gardenHover = -1; });
+  }
+  const navBtn = document.querySelector('.menu-item[data-view="garden"]');
+  if (navBtn) navBtn.addEventListener("click", () => startGardenAnim());
   renderGarden();
   setInterval(() => {
     if (!garden) return;

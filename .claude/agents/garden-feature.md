@@ -15,14 +15,22 @@ deep context in `docs/agents/plans/2026-08-18-idle-garden.md` (MVP shipped; late
   Shape: `{ sun, coins, sunRate, lastTick, plots:[{id,plant|null,planted|null}], unlocked:[keys], createdAt }`.
 - **Config:** `PLANTS` (`{ cost(sun), grow(sec), yield(coins), unlock(coins), emoji }`),
   `PLANT_ORDER`, `GARDEN_TICK` (1000 ms).
-- **Render:** `renderGarden()` (stats bar, `renderGardenSeedbar()`, plot grid via `buildPlot()`,
-  `renderGardenShop()`); init `initGarden()` (seeds, `settleSun()`, renders, starts the tick).
+- **Render:** `renderGarden()` updates the HTML stats bar, `renderGardenSeedbar()`,
+  `renderGardenShop()`. The **plots are drawn on a `<canvas>`** (side-on garden bed): `drawGarden`
+  → `drawPlant`/`drawLeaf` (2D primitives, no assets; sky/sun/soil + plants that scale with
+  `growProgress` and bloom when ripe). A `requestAnimationFrame` loop (`gardenLoop`/
+  `startGardenAnim`) runs **only while the view is active**; `sizeGardenCanvas()` is DPR-aware.
+  Theme via `gardenDark()`. init `initGarden()` (seeds, `settleSun()`, grabs the 2D context,
+  wires canvas click/hover, starts the 1 s state tick).
 - **Actions:** `plantSeed(plot,type)`, `harvest(plot)`, `buyPlot()`, `buySunLamp()`,
   `unlockPlant(type)` — each `settleSun()` → mutate → `save.idle()` → `renderGarden()` →
   `updateBadges()`. `gardenSelSeed` = the currently selected seed (per device).
-- **Key ids:** `#garden-stats`, `#garden-msg`, `#garden-seedbar`, `#garden-plots`, `#garden-shop`.
-- **Pure helpers (unit-tested):** `sunGain(rate,ms)`, `growProgress(grow,planted,now)`,
-  `isRipe(grow,planted,now)`, `plotCost(nPlots)`, `sunLampCost(rate)`. Keep them pure.
+- **Key ids:** `#garden-stats`, `#garden-msg`, `#garden-seedbar`, `#garden-canvas`, `#garden-shop`.
+- **Interaction:** click the canvas → `plotIndexAtX(x, w, n, pad)` (pure) → `plantSeed`/`harvest`;
+  `pointermove` sets `gardenHover`. `PLANT_COLORS` maps type → head colour.
+- **Pure helpers (unit-tested):** `sunGain`, `growProgress`, `isRipe`, `plotCost`, `sunLampCost`,
+  `plotIndexAtX`. Keep them pure. The smoke test stubs `getContext`/`requestAnimationFrame` — if
+  you add new canvas APIs, extend those stubs in `test/run.mjs`.
 - **Sync:** `org.idle` is in `SYNC_KEYS` and reloaded in `applyRemoteState` (co-op shared save).
 
 ## How it works & gotchas

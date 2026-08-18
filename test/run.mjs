@@ -127,6 +127,11 @@ check("every save.X() call has a matching setter", () => {
 // ------------------------------------------------------------
 console.log("\n\x1b[1mIntegration smoke (executes app.js)\x1b[0m");
 
+const canvasCtxStub = new Proxy({}, {
+  get: (_, p) => (p === "createLinearGradient" || p === "createRadialGradient")
+    ? () => ({ addColorStop() {} })
+    : () => {},
+});
 function makeEl() {
   const node = {
     style: {}, dataset: {}, files: [], children: [], hidden: false, open: false,
@@ -139,6 +144,7 @@ function makeEl() {
     querySelector() { return makeEl(); }, querySelectorAll() { return []; },
     closest() { return makeEl(); },
     getBoundingClientRect() { return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }; },
+    getContext: () => canvasCtxStub, width: 0, height: 0, clientWidth: 0, clientHeight: 0,
   };
   return node;
 }
@@ -162,19 +168,19 @@ function runApp() {
   const windowStub = { addEventListener() {}, removeEventListener() {} };
   const noop = () => {};
   const exportsTail =
-    "\n;return {num,round1,macroTotals,kcalOf,parseSteamId,personGold,raidStats,fmtGold,GAME_STATUS,PRIORITY_RANK,mkIngredient,GAME_ORDER,clampZoom,screenToWorld,worldToScreen,rectsOverlap,computeSnap,pushCapped,edgePoint,sunGain,growProgress,isRipe,plotCost};";
+    "\n;return {num,round1,macroTotals,kcalOf,parseSteamId,personGold,raidStats,fmtGold,GAME_STATUS,PRIORITY_RANK,mkIngredient,GAME_ORDER,clampZoom,screenToWorld,worldToScreen,rectsOverlap,computeSnap,pushCapped,edgePoint,sunGain,growProgress,isRipe,plotCost,plotIndexAtX};";
   // eslint-disable-next-line no-new-func
   const factory = new Function(
     "window", "document", "localStorage", "alert", "confirm", "prompt", "console",
     "setInterval", "setTimeout", "clearTimeout", "clearInterval", "fetch",
-    "AbortController", "Image", "FileReader", "Notification",
+    "AbortController", "Image", "FileReader", "Notification", "requestAnimationFrame", "cancelAnimationFrame",
     appSrc + exportsTail
   );
   return factory(
     windowStub, documentStub, localStorage, noop, () => false, () => null, console,
     () => 0, () => 0, noop, noop, () => Promise.reject(new Error("no network in tests")),
     class { abort() {} constructor() { this.signal = {}; } },
-    class { set src(_) {} }, class { readAsDataURL() {} }, undefined
+    class { set src(_) {} }, class { readAsDataURL() {} }, undefined, () => 0, noop
   );
 }
 
@@ -193,7 +199,7 @@ if (!api) {
 } else {
   const { num, round1, macroTotals, kcalOf, parseSteamId, personGold, raidStats, fmtGold,
           clampZoom, screenToWorld, worldToScreen, rectsOverlap, computeSnap, pushCapped, edgePoint,
-          sunGain, growProgress, isRipe, plotCost } = api;
+          sunGain, growProgress, isRipe, plotCost, plotIndexAtX } = api;
 
   check("num() coerces only positive finite numbers", () => {
     eq(num("5"), 5); eq(num("2.5"), 2.5); eq(num("abc"), 0); eq(num("-3"), 0);
@@ -266,6 +272,12 @@ if (!api) {
   });
   check("garden: plotCost() rises with plot count", () => {
     eq(plotCost(0), 50); eq(plotCost(3) > plotCost(2), true);
+  });
+  check("garden: plotIndexAtX() maps a canvas x to a plot (or -1 outside)", () => {
+    eq(plotIndexAtX(25, 300, 4, 20), 0);   // first slot
+    eq(plotIndexAtX(150, 300, 4, 20), 2);  // middle
+    eq(plotIndexAtX(5, 300, 4, 20), -1);   // left of the padding
+    eq(plotIndexAtX(295, 300, 4, 20), -1); // right of the padding
   });
 }
 
