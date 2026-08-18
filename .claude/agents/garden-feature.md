@@ -20,8 +20,12 @@ deep context in `docs/agents/plans/2026-08-18-idle-garden.md` (MVP shipped; late
   → `drawPlant`/`drawLeaf` (2D primitives, no assets; sky/sun/soil + plants that scale with
   `growProgress` and bloom when ripe). A `requestAnimationFrame` loop (`gardenLoop`/
   `startGardenAnim`) runs **only while the view is active**; `sizeGardenCanvas()` is DPR-aware.
-  Theme via `gardenDark()`. init `initGarden()` (seeds, `settleSun()`, grabs the 2D context,
-  wires canvas click/hover, starts the 1 s state tick).
+  The scene follows the **real local clock** (`new Date()`): sky tint + a sun that arcs by
+  time of day, a moon + twinkling `GARDEN_STARS` at night, sunrise/sunset glow, drifting
+  `drawCloud`s, and a butterfly/bee via `drawCritters`. Plants have **per-type silhouettes**
+  (sprout = leafy, flower = round blossom via `drawBloom`, sunflower = tall big head). Colour
+  mixing helpers `gmix`/`grgb`. init `initGarden()` (seeds, `settleSun()`, grabs the 2D
+  context, wires canvas click/hover, starts the 1 s state tick).
 - **Actions:** `plantSeed(plot,type)`, `harvest(plot)`, `buyPlot()`, `buySunLamp()`,
   `unlockPlant(type)` — each `settleSun()` → mutate → `save.idle()` → `renderGarden()` →
   `updateBadges()`. `gardenSelSeed` = the currently selected seed (per device).

@@ -2838,15 +2838,54 @@ function drawLeaf(ctx, x, y, size, angle) {
   ctx.restore();
 }
 
-function drawPlant(ctx, x, baseY, slot, plot, i, now, dark) {
+const gmix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const grgb = (c) => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+const GARDEN_STARS = [[0.08,0.18],[0.17,0.30],[0.26,0.12],[0.40,0.22],[0.55,0.14],[0.63,0.28],[0.72,0.19],[0.83,0.12],[0.90,0.26],[0.48,0.34]];
+
+function drawBloom(ctx, cx, cy, r, petalCol, centerCol, petalN, now) {
+  const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, r * 2.4);
+  g.addColorStop(0, "rgba(255,255,190,0.5)"); g.addColorStop(1, "rgba(255,255,190,0)");
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r * 2.4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = petalCol;
+  for (let k = 0; k < petalN; k++) { const a = k * 2 * Math.PI / petalN + now / 2600; ctx.beginPath(); ctx.ellipse(cx + Math.cos(a) * r, cy + Math.sin(a) * r, r * 0.6, r * 0.34, a, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = centerCol; ctx.beginPath(); ctx.arc(cx, cy, r * 0.68, 0, Math.PI * 2); ctx.fill();
+}
+function drawCloud(ctx, cx, cy, scale, daylight) {
+  ctx.fillStyle = `rgba(255,255,255,${(0.3 + 0.5 * daylight).toFixed(2)})`;
+  const s = 24 * scale;
+  [[0, 0, 1], [-s * 0.9, 6, 0.8], [s * 0.9, 6, 0.8], [-s * 0.4, -6, 0.7], [s * 0.5, -4, 0.75]].forEach(([dx, dy, r]) => {
+    ctx.beginPath(); ctx.ellipse(cx + dx, cy + dy, s * r, s * r * 0.7, 0, 0, Math.PI * 2); ctx.fill();
+  });
+}
+function drawCritters(ctx, w, h, soilY, now) {
+  const bx = w * 0.5 + Math.sin(now / 1600) * w * 0.32, by = h * 0.34 + Math.cos(now / 1100) * h * 0.14;
+  const flap = Math.abs(Math.sin(now / 120));
+  ctx.save(); ctx.translate(bx, by);
+  ctx.fillStyle = "#ef7fb0";
+  ctx.beginPath(); ctx.ellipse(-4, 0, 5, 3 + 4 * flap, -0.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(4, 0, 5, 3 + 4 * flap, 0.5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#333"; ctx.fillRect(-1, -4, 2, 8);
+  ctx.restore();
+  const ex = w * 0.5 + Math.cos(now / 1300) * w * 0.28, ey = soilY - 58 + Math.sin(now / 700) * 22;
+  ctx.save(); ctx.translate(ex, ey);
+  ctx.fillStyle = "rgba(255,255,255,0.7)"; const wf = Math.abs(Math.sin(now / 60));
+  ctx.beginPath(); ctx.ellipse(-1, -4, 3, 1.5 + wf, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#f2c200"; ctx.beginPath(); ctx.ellipse(0, 0, 6, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "#3a2b00"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(-2, -3.2); ctx.lineTo(-2, 3.2); ctx.moveTo(2, -3.2); ctx.lineTo(2, 3.2); ctx.stroke();
+  ctx.restore();
+}
+
+function drawPlant(ctx, x, baseY, slot, plot, i, now, daylight) {
+  const lightLabel = daylight <= 0.4;
   if (gardenHover === i) {
-    ctx.fillStyle = dark ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.4)";
+    ctx.fillStyle = "rgba(255,255,255,0.28)";
     ctx.beginPath(); ctx.ellipse(x, baseY + 6, slot * 0.4, 10, 0, 0, Math.PI * 2); ctx.fill();
   }
   if (!plot.plant) {
-    ctx.fillStyle = dark ? "#4a3626" : "#8a5f38";
+    ctx.fillStyle = "#6b4a2c";
     ctx.beginPath(); ctx.ellipse(x, baseY + 4, slot * 0.22, 7, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = dark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.35)";
+    ctx.fillStyle = lightLabel ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.35)";
     ctx.font = "16px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText("＋", x, baseY - 10);
     return;
@@ -2854,31 +2893,38 @@ function drawPlant(ctx, x, baseY, slot, plot, i, now, dark) {
   const p = PLANTS[plot.plant];
   const ripe = isRipe(p.grow, plot.planted, now);
   const prog = growProgress(p.grow, plot.planted, now);
-  const stemH = Math.min(slot * 0.95, 96) * (ripe ? 1 : Math.max(0.12, prog));
   const sway = Math.sin(now / 700 + i) * (2 + 4 * prog);
-  const bob = ripe ? Math.sin(now / 300 + i) * 3 : 0;
-  const topX = x + sway, topY = baseY - stemH + bob;
-  ctx.strokeStyle = dark ? "#3f8f4f" : "#3fa14a"; ctx.lineWidth = 3; ctx.lineCap = "round";
-  ctx.beginPath(); ctx.moveTo(x, baseY); ctx.quadraticCurveTo((x + topX) / 2 + sway, baseY - stemH * 0.5, topX, topY); ctx.stroke();
-  if (prog > 0.25 || ripe) {
-    ctx.fillStyle = dark ? "#3f8f4f" : "#5cb85c";
-    const lx = (x + topX) / 2, ly = baseY - stemH * 0.5, ls = 8 + 6 * prog;
-    drawLeaf(ctx, lx, ly, ls, -0.6); drawLeaf(ctx, lx, ly, ls, Math.PI + 0.6);
+  const bob = ripe ? Math.sin(now / 300 + i) * 2.5 : 0;
+
+  if (plot.plant === "sprout") {                      // low, leafy — no flower
+    const hgt = Math.min(slot * 0.5, 46) * (ripe ? 1 : Math.max(0.2, prog));
+    const topX = x + sway * 0.5, topY = baseY - hgt + bob;
+    ctx.strokeStyle = "#3fa14a"; ctx.lineWidth = 3; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(x, baseY); ctx.lineTo(topX, topY); ctx.stroke();
+    ctx.fillStyle = ripe ? "#5fb14e" : "#8bd17c";
+    const leaves = ripe ? 4 : (prog > 0.5 ? 3 : 2);
+    for (let k = 0; k < leaves; k++) { const a = -Math.PI / 2 + (k - (leaves - 1) / 2) * 0.7; drawLeaf(ctx, topX, topY + 2, 8 + 6 * prog, a); }
+  } else if (plot.plant === "flower") {               // medium stem + round blossom
+    const hgt = Math.min(slot * 0.85, 78) * (ripe ? 1 : Math.max(0.15, prog));
+    const topX = x + sway, topY = baseY - hgt + bob;
+    ctx.strokeStyle = "#3fa14a"; ctx.lineWidth = 3; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(x, baseY); ctx.quadraticCurveTo((x + topX) / 2 + sway, baseY - hgt * 0.5, topX, topY); ctx.stroke();
+    if (prog > 0.3 || ripe) { ctx.fillStyle = "#5cb85c"; drawLeaf(ctx, (x + topX) / 2, baseY - hgt * 0.5, 10, -0.6); drawLeaf(ctx, (x + topX) / 2, baseY - hgt * 0.5, 10, Math.PI + 0.6); }
+    if (ripe) drawBloom(ctx, topX, topY, 11, "#f6a5c0", "#ffd23f", 6, now);
+    else { ctx.fillStyle = "#f6a5c0"; ctx.beginPath(); ctx.arc(topX, topY, 3 + 7 * prog, 0, Math.PI * 2); ctx.fill(); }
+  } else {                                            // sunflower — tall, big head
+    const hgt = Math.min(slot * 1.05, 110) * (ripe ? 1 : Math.max(0.12, prog));
+    const topX = x + sway, topY = baseY - hgt + bob;
+    ctx.strokeStyle = "#3f8f3a"; ctx.lineWidth = 4; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(x, baseY); ctx.quadraticCurveTo((x + topX) / 2 + sway * 0.5, baseY - hgt * 0.5, topX, topY); ctx.stroke();
+    if (prog > 0.25 || ripe) { ctx.fillStyle = "#4fa049"; drawLeaf(ctx, (x + topX) / 2, baseY - hgt * 0.45, 13, -0.5); drawLeaf(ctx, (x + topX) / 2, baseY - hgt * 0.6, 12, Math.PI + 0.5); }
+    if (ripe) drawBloom(ctx, topX, topY, 15, "#ffd23f", "#7a4a1e", 12, now);
+    else { ctx.fillStyle = "#7bbf4e"; ctx.beginPath(); ctx.arc(topX, topY, 4 + 8 * prog, 0, Math.PI * 2); ctx.fill(); }
   }
-  const col = PLANT_COLORS[plot.plant] || "#f6a5c0";
-  const headR = ripe ? 13 : 4 + 8 * prog;
-  if (ripe) {
-    const g = ctx.createRadialGradient(topX, topY, 2, topX, topY, headR * 2.4);
-    g.addColorStop(0, "rgba(255,255,190,0.55)"); g.addColorStop(1, "rgba(255,255,190,0)");
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(topX, topY, headR * 2.4, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = col;
-    for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4 + now / 2200; ctx.beginPath(); ctx.ellipse(topX + Math.cos(a) * headR, topY + Math.sin(a) * headR, headR * 0.62, headR * 0.34, a, 0, Math.PI * 2); ctx.fill(); }
-    ctx.fillStyle = plot.plant === "sunflower" ? "#7a4a1e" : "#ffd23f";
-    ctx.beginPath(); ctx.arc(topX, topY, headR * 0.68, 0, Math.PI * 2); ctx.fill();
-  } else {
-    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(topX, topY, headR, 0, Math.PI * 2); ctx.fill();
+
+  if (!ripe) {
     const remain = Math.ceil((p.grow * 1000 - (now - plot.planted)) / 1000);
-    ctx.fillStyle = dark ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.45)";
+    ctx.fillStyle = lightLabel ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.45)";
     ctx.font = "11px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "top";
     ctx.fillText(fmtDuration(remain), x, baseY + 8);
   }
@@ -2889,30 +2935,60 @@ function drawGarden(now) {
   sizeGardenCanvas();
   const w = gardenCanvas.clientWidth, h = gardenCanvas.clientHeight;
   if (!w || !h || !garden) return;
-  const ctx = gardenCtx, dark = gardenDark();
+  const ctx = gardenCtx;
+  const clock = new Date();
+  const tod = clock.getHours() + clock.getMinutes() / 60;          // local time 0..24
+  const daylight = Math.max(0, Math.sin((tod - 6) / 12 * Math.PI)); // 0 night, 1 noon
+  const dayUp = tod >= 6 && tod <= 18;
+  // sky tinted by real time of day (+ a sunrise/sunset glow near the horizon)
+  const top = gmix([20, 26, 52], [150, 210, 255], daylight);
+  let bot = gmix([34, 46, 74], [226, 245, 235], daylight);
+  bot = gmix(bot, [255, 165, 95], dayUp ? Math.max(0, 1 - daylight) * 0.6 : 0);
   const sky = ctx.createLinearGradient(0, 0, 0, h);
-  if (dark) { sky.addColorStop(0, "#1b2340"); sky.addColorStop(1, "#28374f"); }
-  else { sky.addColorStop(0, "#bfe6ff"); sky.addColorStop(1, "#eaf7ef"); }
+  sky.addColorStop(0, grgb(top)); sky.addColorStop(1, grgb(bot));
   ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
-  // sun
-  const sunX = w * 0.84, sunY = h * 0.24, sunR = Math.min(w, h) * 0.09;
-  const glow = ctx.createRadialGradient(sunX, sunY, sunR * 0.3, sunX, sunY, sunR * 3);
-  glow.addColorStop(0, dark ? "rgba(255,220,150,0.5)" : "rgba(255,230,120,0.85)"); glow.addColorStop(1, "rgba(255,230,120,0)");
-  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(sunX, sunY, sunR * 3, 0, Math.PI * 2); ctx.fill();
-  ctx.save(); ctx.translate(sunX, sunY); ctx.rotate((now / 5000) % (Math.PI * 2));
-  ctx.strokeStyle = dark ? "rgba(255,220,150,0.35)" : "rgba(255,200,60,0.7)"; ctx.lineWidth = 2;
-  for (let k = 0; k < 12; k++) { ctx.rotate(Math.PI / 6); ctx.beginPath(); ctx.moveTo(sunR * 1.3, 0); ctx.lineTo(sunR * 1.95, 0); ctx.stroke(); }
-  ctx.restore();
-  ctx.fillStyle = dark ? "#ffd98a" : "#ffd23f"; ctx.beginPath(); ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2); ctx.fill();
-  // soil
-  const soilY = h * 0.66;
-  ctx.fillStyle = dark ? "#3a2a1e" : "#7a5230"; ctx.beginPath(); ctx.moveTo(0, soilY);
+  // stars (fade in as it gets dark)
+  if (daylight < 0.25) {
+    const a = (0.25 - daylight) / 0.25;
+    GARDEN_STARS.forEach((s, k) => {
+      const tw = 0.5 + 0.5 * Math.sin(now / 600 + k * 2);
+      ctx.fillStyle = `rgba(255,255,255,${(a * tw * 0.9).toFixed(2)})`;
+      ctx.beginPath(); ctx.arc(s[0] * w, s[1] * h, 1.3, 0, Math.PI * 2); ctx.fill();
+    });
+  }
+  // sun by day, moon by night — arced across the sky by the clock
+  if (dayUp) {
+    const sx = w * (0.1 + 0.8 * (tod - 6) / 12), sy = h * 0.6 - h * 0.42 * daylight, sr = Math.min(w, h) * 0.085;
+    const glow = ctx.createRadialGradient(sx, sy, sr * 0.3, sx, sy, sr * 3);
+    glow.addColorStop(0, `rgba(255,235,150,${(0.35 + 0.5 * daylight).toFixed(2)})`); glow.addColorStop(1, "rgba(255,230,120,0)");
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(sx, sy, sr * 3, 0, Math.PI * 2); ctx.fill();
+    ctx.save(); ctx.translate(sx, sy); ctx.rotate((now / 5000) % (Math.PI * 2));
+    ctx.strokeStyle = `rgba(255,205,70,${(0.3 + 0.4 * daylight).toFixed(2)})`; ctx.lineWidth = 2;
+    for (let k = 0; k < 12; k++) { ctx.rotate(Math.PI / 6); ctx.beginPath(); ctx.moveTo(sr * 1.3, 0); ctx.lineTo(sr * 1.95, 0); ctx.stroke(); }
+    ctx.restore();
+    ctx.fillStyle = grgb(gmix([255, 180, 80], [255, 222, 90], daylight));
+    ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
+  } else {
+    const u = tod > 18 ? (tod - 18) / 12 : (tod + 6) / 12;         // 0..1 through the night
+    const mx = w * (0.1 + 0.8 * u), my = h * 0.5 - h * 0.22 * Math.sin(u * Math.PI), mr = Math.min(w, h) * 0.06;
+    ctx.fillStyle = "rgba(235,238,255,0.95)"; ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = grgb(top); ctx.beginPath(); ctx.arc(mx + mr * 0.55, my - mr * 0.3, mr * 0.95, 0, Math.PI * 2); ctx.fill(); // carve a crescent
+  }
+  // drifting clouds
+  drawCloud(ctx, ((now / 60000) * w + w * 0.15) % (w + 220) - 110, h * 0.20, 1.0, daylight);
+  drawCloud(ctx, ((now / 95000) * w + w * 0.62) % (w + 220) - 110, h * 0.32, 0.7, daylight);
+  // soil (darker at night)
+  const soilY = h * 0.66, soilLit = 0.4 + 0.6 * daylight;
+  ctx.fillStyle = grgb(gmix([46, 34, 24], [122, 82, 48], soilLit));
+  ctx.beginPath(); ctx.moveTo(0, soilY);
   for (let x = 0; x <= w; x += w / 8) ctx.quadraticCurveTo(x + w / 16, soilY - 6, x + w / 8, soilY);
   ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = dark ? "#2f5133" : "#6cbf59"; ctx.fillRect(0, soilY - 4, w, 6);
+  ctx.fillStyle = grgb(gmix([36, 62, 40], [108, 191, 89], soilLit)); ctx.fillRect(0, soilY - 4, w, 6);
   // plants
   const n = garden.plots.length, pad = Math.max(24, w * 0.06), slot = (w - 2 * pad) / n;
-  garden.plots.forEach((plot, i) => drawPlant(ctx, pad + (i + 0.5) * slot, soilY, slot, plot, i, now, dark));
+  garden.plots.forEach((plot, i) => drawPlant(ctx, pad + (i + 0.5) * slot, soilY, slot, plot, i, now, daylight));
+  // a butterfly + bee flit about by day
+  if (daylight > 0.15) drawCritters(ctx, w, h, soilY, now);
 }
 
 function gardenLoop() {
