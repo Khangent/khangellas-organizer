@@ -168,7 +168,7 @@ function runApp() {
   const windowStub = { addEventListener() {}, removeEventListener() {} };
   const noop = () => {};
   const exportsTail =
-    "\n;return {num,round1,macroTotals,kcalOf,parseSteamId,personGold,raidStats,fmtGold,GAME_STATUS,PRIORITY_RANK,mkIngredient,GAME_ORDER,clampZoom,screenToWorld,worldToScreen,rectsOverlap,computeSnap,pushCapped,edgePoint,sunGain,growProgress,isRipe,plotCost,plotIndexAtX};";
+    "\n;return {num,round1,macroTotals,kcalOf,parseSteamId,personGold,raidStats,fmtGold,GAME_STATUS,PRIORITY_RANK,mkIngredient,GAME_ORDER,clampZoom,screenToWorld,worldToScreen,rectsOverlap,computeSnap,pushCapped,edgePoint,sunGain,growProgress,isRipe,plotCost,plotIndexAtX,recipeMacros};";
   // eslint-disable-next-line no-new-func
   const factory = new Function(
     "window", "document", "localStorage", "alert", "confirm", "prompt", "console",
@@ -199,7 +199,7 @@ if (!api) {
 } else {
   const { num, round1, macroTotals, kcalOf, parseSteamId, personGold, raidStats, fmtGold,
           clampZoom, screenToWorld, worldToScreen, rectsOverlap, computeSnap, pushCapped, edgePoint,
-          sunGain, growProgress, isRipe, plotCost, plotIndexAtX } = api;
+          sunGain, growProgress, isRipe, plotCost, plotIndexAtX, recipeMacros } = api;
 
   check("num() coerces only positive finite numbers", () => {
     eq(num("5"), 5); eq(num("2.5"), 2.5); eq(num("abc"), 0); eq(num("-3"), 0);
@@ -278,6 +278,11 @@ if (!api) {
     eq(plotIndexAtX(150, 300, 4, 20), 2);  // middle
     eq(plotIndexAtX(5, 300, 4, 20), -1);   // left of the padding
     eq(plotIndexAtX(295, 300, 4, 20), -1); // right of the padding
+  });
+  check("recipeMacros() uses recipe totals, else sums legacy per-ingredient", () => {
+    eq(recipeMacros({ protein: "20", carbs: "30", fat: "10" }), { p: 20, c: 30, f: 10 });
+    eq(recipeMacros({ ingredients: [{ protein: "5", carbs: "5", fat: "2" }, { protein: "5" }] }), { p: 10, c: 5, f: 2 });
+    eq(recipeMacros({ protein: "", carbs: "", fat: "" }), { p: 0, c: 0, f: 0 });
   });
 }
 

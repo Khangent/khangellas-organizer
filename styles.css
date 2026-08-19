@@ -820,7 +820,7 @@ input[type="number"] { width: 80px; }
 
 .rec-card-body { padding: 6px 16px 16px; border-top: 1px solid var(--border); }
 .rec-view-table { display: flex; flex-direction: column; margin: 6px 0 14px; }
-.rec-view-row { display: grid; grid-template-columns: 2fr 1.2fr 46px 46px 46px; gap: 8px; align-items: center; padding: 7px 0; font-size: 0.88rem; border-bottom: 1px solid var(--border); }
+.rec-view-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 7px 0; font-size: 0.9rem; border-bottom: 1px solid var(--border); }
 .rec-view-row:last-child { border-bottom: none; }
 .rec-view-row.head { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); font-weight: 700; }
 .rec-view-name { font-weight: 600; }
@@ -839,12 +839,21 @@ input[type="number"] { width: 80px; }
 .rec-title-in { font: inherit; font-size: 1.05rem; font-weight: 700; width: 100%; }
 .rec-serv { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
 .rec-serv input { width: 84px; font: inherit; }
-.rec-ing-head, .rec-ing-row { display: grid; grid-template-columns: 1.7fr 1.1fr 58px 58px 58px 30px; gap: 8px; align-items: center; }
+.rec-ing-head, .rec-ing-row { display: grid; grid-template-columns: 1fr 150px 32px; gap: 10px; align-items: center; }
 .rec-ing-head { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); font-weight: 700; padding: 0 2px; }
-.rec-ing-head .center { text-align: center; }
 .rec-ing-rows { display: flex; flex-direction: column; gap: 8px; }
-.rec-ing-row input { font: inherit; width: 100%; min-width: 0; }
-.rec-macro-in { text-align: center; }
+.rec-ing-row input { font: inherit; font-size: 0.95rem; width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
+.rec-ing-row input:focus { outline: none; border-color: var(--primary); }
+/* Whole-recipe macros block */
+.rec-macros-block { margin: 8px 0 4px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
+.rec-macros-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); font-weight: 700; margin-bottom: 8px; }
+.rec-macros-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.rec-macro-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; font-weight: 700; }
+.rec-macro-field.p span { color: #db2777; }
+.rec-macro-field.c span { color: #d97706; }
+.rec-macro-field.f span { color: #2563eb; }
+.rec-macro-in { font: inherit; font-size: 0.95rem; width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
+.rec-macro-in:focus { outline: none; border-color: var(--primary); }
 .rec-in-del { justify-self: center; }
 .rec-add-ing { align-self: flex-start; }
 .rec-editor-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
@@ -853,14 +862,12 @@ input[type="number"] { width: 80px; }
 @media (max-width: 620px) {
   .rec-ing-head { display: none; }
   .rec-ing-row {
-    grid-template-columns: 1fr 1fr 1fr; gap: 8px;
+    grid-template-columns: 1fr 40px; gap: 8px;
     padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2);
   }
   .rec-ing-row .rec-in-name { grid-column: 1 / -1; }
-  .rec-ing-row .rec-in-amt { grid-column: 1 / -1; }
-  .rec-in-del { grid-column: 1 / -1; justify-self: end; }
-  .rec-view-row { grid-template-columns: 1.6fr 34px 34px 34px; }
-  .rec-view-amt { display: none; }
+  .rec-ing-row .rec-in-amt { grid-column: 1; }
+  .rec-in-del { grid-column: 2; justify-self: center; align-self: center; }
 }
 
 /* ---------- Reusable modal + calendar colour picker ---------- */

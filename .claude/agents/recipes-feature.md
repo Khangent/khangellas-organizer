@@ -11,14 +11,21 @@ You are the **Recipes** specialist for Khangella's Organizer, a vanilla HTML/CSS
 - **State:** `recipes = store.get("org.recipes", [])`; setter `save.recipes()`; init `initRecipes()`.
 - **Render:** `renderRecipes()` (cards) and the modal editor `renderRecEditor()` / `updateRecTotals()`; `newRecipe`/`editRecipe`/`saveRecipe`/`deleteRecipe`.
 - **Key ids:** `#rec-new`, `#rec-search`, `#rec-list`, modal `#rec-modal`/`.rec-editor`, `#rec-editor-totals`.
-- **Data model:** `{ id, title, servings, ingredients: [ { id, name, amount, protein, carbs, fat } ], createdAt }`.
-- **Macro math:** `macroTotals()`, `kcalOf()` = `4·P + 4·C + 9·F`, `num()`/`round1()`; per-serving line shows when `servings > 1`.
+- **Data model:** `{ id, title, servings, protein, carbs, fat, ingredients: [ { id, name, amount } ], createdAt }`
+  — **macros are whole-recipe totals** (top-level strings); ingredients are just name+amount.
+- **Macro math:** `recipeMacros(r)` → `{p,c,f}` (uses the recipe totals, else sums legacy
+  per-ingredient macros); `kcalOf()` = `4·P + 4·C + 9·F`; `macroTotals()` kept for the fallback +
+  `migrateRecipes()` (one-time: old per-ingredient macros → recipe total). Per-serving line when
+  `servings > 1`.
 - **Sync:** yes — `org.recipes` is in `SYNC_KEYS`.
 
 ## How to work
-- Build DOM with `el()`; never string HTML.
-- `saveRecipe()` filters out empty ingredient rows and defaults the title. The macro fields are free-text numbers stored as strings; run them through `num()`.
-- Unit-tested helpers (`num`, `round1`, `macroTotals`, `kcalOf`) are covered by `test/run.mjs` — keep them pure and don't break their signatures.
+- Build DOM with `el()`; never string HTML. Editor rows are Name + Amount (+ ✕); the total
+  macros are three inputs bound to `recDraft.protein/carbs/fat` (see `recMacroInput`).
+- `saveRecipe()` keeps ingredients with a name or amount and defaults the title. Macro fields
+  are free-text numbers stored as strings; run them through `num()` / `recipeMacros`.
+- Unit-tested helpers (`num`, `round1`, `macroTotals`, `kcalOf`, `recipeMacros`) are covered by
+  `test/run.mjs` — keep them pure and don't break their signatures.
 - After mutating state: `save.recipes(); renderRecipes(); updateBadges();`.
 - Served-asset change → bump `?v=`, `npm test`, ship via the `deploy` skill.
 

@@ -1567,7 +1567,7 @@ let recDraft = null;      // working copy of the recipe being edited
 let recEditingId = null;  // id when editing an existing recipe, else null
 
 function mkIngredient() {
-  return { id: uid(), name: "", amount: "", protein: "", carbs: "", fat: "" };
+  return { id: uid(), name: "", amount: "" };
 }
 
 function macroTotals(ingredients) {
@@ -1577,6 +1577,13 @@ function macroTotals(ingredients) {
   );
 }
 const kcalOf = (t) => Math.round(t.p * 4 + t.c * 4 + t.f * 9);
+
+// Whole-recipe macros: the recipe's own totals if present, else sum legacy per-ingredient macros.
+function recipeMacros(r) {
+  if (r && (r.protein != null || r.carbs != null || r.fat != null))
+    return { p: num(r.protein), c: num(r.carbs), f: num(r.fat) };
+  return macroTotals((r && r.ingredients) || []);
+}
 
 function macroChips(t, opts = {}) {
   return el("div", { class: "macro-chips" + (opts.small ? " small" : "") }, [
@@ -1590,15 +1597,19 @@ function macroChips(t, opts = {}) {
 // ---- Editor (in a modal) ----
 function newRecipe() {
   recEditingId = null;
-  recDraft = { id: uid(), title: "", servings: "", ingredients: [mkIngredient()], createdAt: new Date().toISOString() };
+  recDraft = { id: uid(), title: "", servings: "", protein: "", carbs: "", fat: "", ingredients: [mkIngredient()], createdAt: new Date().toISOString() };
   renderRecEditor();
 }
 
 function editRecipe(r) {
   recEditingId = r.id;
+  const m = recipeMacros(r);
   recDraft = {
     id: r.id, title: r.title, servings: r.servings || "", createdAt: r.createdAt,
-    ingredients: (r.ingredients || []).map((i) => ({ ...i, id: i.id || uid() })),
+    protein: r.protein != null ? r.protein : (m.p ? String(round1(m.p)) : ""),
+    carbs: r.carbs != null ? r.carbs : (m.c ? String(round1(m.c)) : ""),
+    fat: r.fat != null ? r.fat : (m.f ? String(round1(m.f)) : ""),
+    ingredients: (r.ingredients || []).map((i) => ({ id: i.id || uid(), name: i.name || "", amount: i.amount || "" })),
   };
   if (!recDraft.ingredients.length) recDraft.ingredients.push(mkIngredient());
   renderRecEditor();
@@ -1611,11 +1622,11 @@ function closeRecEditor() {
   m.querySelector(".rec-editor").innerHTML = "";
 }
 
-function macroInput(ing, key, ph) {
+function recMacroInput(key, ph) {
   return el("input", {
     class: "rec-macro-in", type: "number", min: "0", step: "0.1", inputmode: "decimal",
-    value: ing[key] === "" ? "" : String(ing[key]), placeholder: ph,
-    oninput: (e) => { ing[key] = e.target.value; updateRecTotals(); },
+    value: recDraft[key] == null || recDraft[key] === "" ? "" : String(recDraft[key]), placeholder: ph,
+    oninput: (e) => { recDraft[key] = e.target.value; updateRecTotals(); },
   });
 }
 
@@ -1630,11 +1641,8 @@ function renderRecEditor() {
     rows.append(el("div", { class: "rec-ing-row" }, [
       el("input", { class: "rec-in-name", value: ing.name, placeholder: "Ingredient",
         oninput: (e) => { ing.name = e.target.value; } }),
-      el("input", { class: "rec-in-amt", value: ing.amount, placeholder: "e.g. 200 g",
+      el("input", { class: "rec-in-amt", value: ing.amount, placeholder: "Amount (e.g. 200 g)",
         oninput: (e) => { ing.amount = e.target.value; } }),
-      macroInput(ing, "protein", "P"),
-      macroInput(ing, "carbs", "C"),
-      macroInput(ing, "fat", "F"),
       el("button", { class: "icon-btn tiny rec-in-del", title: "Remove ingredient", text: "✕",
         onclick: () => {
           d.ingredients = d.ingredients.filter((x) => x.id !== ing.id);
@@ -1657,13 +1665,19 @@ function renderRecEditor() {
         oninput: (e) => { d.servings = e.target.value; updateRecTotals(); } }),
     ]),
     el("div", { class: "rec-ing-head" }, [
-      el("span", { text: "Ingredient" }), el("span", { text: "Amount" }),
-      el("span", { class: "center", text: "P (g)" }), el("span", { class: "center", text: "C (g)" }),
-      el("span", { class: "center", text: "F (g)" }), el("span", {}),
+      el("span", { text: "Ingredient" }), el("span", { text: "Amount" }), el("span", {}),
     ]),
     rows,
     el("button", { class: "btn-ghost tiny rec-add-ing", text: "+ Add ingredient",
       onclick: () => { d.ingredients.push(mkIngredient()); renderRecEditor(); } }),
+    el("div", { class: "rec-macros-block" }, [
+      el("div", { class: "rec-macros-label", text: "Macros — whole recipe (grams)" }),
+      el("div", { class: "rec-macros-row" }, [
+        el("label", { class: "rec-macro-field p" }, [el("span", { text: "Protein" }), recMacroInput("protein", "P")]),
+        el("label", { class: "rec-macro-field c" }, [el("span", { text: "Carbs" }), recMacroInput("carbs", "C")]),
+        el("label", { class: "rec-macro-field f" }, [el("span", { text: "Fat" }), recMacroInput("fat", "F")]),
+      ]),
+    ]),
     el("div", { class: "rec-totals", id: "rec-editor-totals" }),
     el("div", { class: "rec-editor-actions" }, [
       el("button", { class: "btn-primary", text: "💾 Save recipe", onclick: saveRecipe }),
@@ -1679,7 +1693,7 @@ function updateRecTotals() {
   const box = $("#rec-editor-totals");
   if (!box || !recDraft) return;
   box.innerHTML = "";
-  const t = macroTotals(recDraft.ingredients);
+  const t = recipeMacros(recDraft);
   box.append(el("div", { class: "rec-totals-line" }, [
     el("span", { class: "rec-totals-label", text: "Total" }), macroChips(t),
   ]));
@@ -1695,7 +1709,9 @@ function updateRecTotals() {
 function saveRecipe() {
   const d = recDraft;
   d.title = (d.title || "").trim() || "Untitled recipe";
-  d.ingredients = d.ingredients.filter((i) => (i.name || "").trim() || num(i.protein) || num(i.carbs) || num(i.fat));
+  d.ingredients = d.ingredients
+    .map((i) => ({ id: i.id, name: i.name, amount: i.amount }))
+    .filter((i) => (i.name || "").trim() || (i.amount || "").trim());
   const idx = recipes.findIndex((r) => r.id === d.id);
   if (idx >= 0) recipes[idx] = d; else recipes.unshift(d);
   save.recipes();
@@ -1733,26 +1749,19 @@ function renderRecipes() {
   }
   items.forEach((r) => {
     const ings = r.ingredients || [];
-    const t = macroTotals(ings);
+    const t = recipeMacros(r);
     const serv = parseInt(r.servings, 10);
 
-    const viewRows = ings.map((i) => {
-      const it = macroTotals([i]);
-      return el("div", { class: "rec-view-row" }, [
-        el("span", { class: "rec-view-name", text: i.name || "—" }),
-        el("span", { class: "rec-view-amt", text: i.amount || "" }),
-        el("span", { class: "center", text: String(round1(it.p)) }),
-        el("span", { class: "center", text: String(round1(it.c)) }),
-        el("span", { class: "center", text: String(round1(it.f)) }),
-      ]);
-    });
+    const viewRows = ings.map((i) => el("div", { class: "rec-view-row" }, [
+      el("span", { class: "rec-view-name", text: i.name || "—" }),
+      el("span", { class: "rec-view-amt", text: i.amount || "" }),
+    ]));
 
     const body = el("div", { class: "rec-card-body", hidden: "hidden" }, [
       ings.length
         ? el("div", { class: "rec-view-table" }, [
             el("div", { class: "rec-view-row head" }, [
               el("span", { text: "Ingredient" }), el("span", { text: "Amount" }),
-              el("span", { class: "center", text: "P" }), el("span", { class: "center", text: "C" }), el("span", { class: "center", text: "F" }),
             ]),
             ...viewRows,
           ])
@@ -1790,7 +1799,26 @@ function renderRecipes() {
   });
 }
 
+// One-time: legacy recipes had per-ingredient macros — sum them into the recipe total.
+function migrateRecipes() {
+  let changed = false;
+  recipes.forEach((r) => {
+    const hasTotals = r.protein != null || r.carbs != null || r.fat != null;
+    const legacy = !hasTotals && (r.ingredients || []).some((i) => i.protein != null || i.carbs != null || i.fat != null);
+    if (legacy) {
+      const t = macroTotals(r.ingredients);
+      r.protein = t.p ? String(round1(t.p)) : "";
+      r.carbs = t.c ? String(round1(t.c)) : "";
+      r.fat = t.f ? String(round1(t.f)) : "";
+      r.ingredients = (r.ingredients || []).map((i) => ({ id: i.id || uid(), name: i.name || "", amount: i.amount || "" }));
+      changed = true;
+    }
+  });
+  if (changed) { save.recipes(); renderRecipes(); }
+}
+
 function initRecipes() {
+  migrateRecipes();
   const nb = $("#rec-new");
   if (nb) nb.addEventListener("click", newRecipe);
   const s = $("#rec-search");
