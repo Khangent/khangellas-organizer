@@ -1256,6 +1256,7 @@ let syncUser = null; // { id, email }
 let syncApplying = false; // true while writing remote data locally (prevents echo)
 let syncPushTimer = null;
 let syncChannel = null;
+let syncMeta = loadSyncMeta(); // per-item change/deletion metadata (see merge core below)
 
 function setSyncStatus(text, kind = "") {
   const s = $("#sync-status");
@@ -1283,37 +1284,207 @@ function collectState() {
   return out;
 }
 
-// Write a remote snapshot into local state and re-render every view.
-function applyRemoteState(data) {
-  if (!data) return;
+// ---------- Item-level merge core (pure, unit-tested) ----------
+// Per-key merge policy. "list" = array of {id}; "map" = object keyed by string;
+// "value" = whole-value last-write-wins (config/scalar). Every SYNC_KEYS entry
+// MUST have a policy (enforced by the test suite).
+const SYNC_POLICY = {
+  "org.todos": "list", "org.shopping": "list", "org.events": "list", "org.reminders": "list",
+  "org.raids": "list", "org.recipes": "list", "org.games": "list", "org.canvas": "list",
+  "org.tcg": "map", "org.callegend": "map",
+  "org.ai": "value", "org.idle": "value", "org.theme": "value",
+};
+const TOMB_TTL_MS = 30 * 24 * 60 * 60 * 1000; // prune deletion tombstones after 30 days
+
+function emptyMeta() { return { ua: {}, tomb: {}, kv: {}, snap: {} }; }
+// djb2 string hash → compact change-detection fingerprint (avoids storing full item copies).
+function hashStr(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return h.toString(36); }
+// Normalize a list/map value into an { id -> item } map.
+function toItemMap(val, policy) {
+  const out = {};
+  if (policy === "list") { if (Array.isArray(val)) for (const it of val) { if (it && it.id != null) out[String(it.id)] = it; } }
+  else if (policy === "map") { if (val && typeof val === "object") for (const k of Object.keys(val)) out[k] = val[k]; }
+  return out;
+}
+// Rebuild a value from merged entries, preserving `order` (local-first) where given.
+function fromItemMap(map, policy, order) {
+  if (policy === "map") { const o = {}; (order || Object.keys(map)).forEach((k) => { if (k in map) o[k] = map[k]; }); return o; }
+  const arr = []; (order || Object.keys(map)).forEach((k) => { if (k in map) arr.push(map[k]); }); return arr;
+}
+// Strip sync envelope fields, leaving just the SYNC_KEYS state.
+function stripMeta(payload) { const s = {}; SYNC_KEYS.forEach((k) => { if (payload && k in payload) s[k] = payload[k]; }); return s; }
+// A payload from a pre-merge client has no _meta → treat everything as timestamp 0 so
+// our freshly-derived local state always wins the tiebreak (union, never a data loss).
+function legacyMeta(state) {
+  const meta = emptyMeta();
+  for (const key of Object.keys(SYNC_POLICY)) {
+    const policy = SYNC_POLICY[key];
+    if (policy === "value") { if (state[key] !== undefined) meta.kv[key] = 0; }
+    else { meta.ua[key] = {}; const m = toItemMap(state[key], policy); for (const id of Object.keys(m)) meta.ua[key][id] = 0; }
+  }
+  return meta;
+}
+
+// Diff current local `state` against the last-seen shadow in `prevMeta`, stamping
+// `now` on new/edited items and turning vanished ids into deletion tombstones.
+function deriveMeta(state, prevMeta, now) {
+  prevMeta = prevMeta && prevMeta.ua ? prevMeta : emptyMeta();
+  const meta = emptyMeta();
+  for (const key of Object.keys(SYNC_POLICY)) {
+    const policy = SYNC_POLICY[key];
+    const prevUA = prevMeta.ua[key] || {}, prevSnap = (prevMeta.snap && prevMeta.snap[key]) || {}, prevTomb = prevMeta.tomb[key] || {};
+    if (policy === "value") {
+      const has = state[key] !== undefined && state[key] !== null;
+      if (has) {
+        const h = hashStr(JSON.stringify(state[key]));
+        const prevH = prevMeta.snap ? prevMeta.snap[key] : undefined;
+        meta.kv[key] = prevH !== undefined && prevH === h ? (prevMeta.kv[key] != null ? prevMeta.kv[key] : now) : now;
+        meta.snap[key] = h;
+      }
+      continue;
+    }
+    meta.ua[key] = {}; meta.snap[key] = {}; meta.tomb[key] = { ...prevTomb };
+    const items = toItemMap(state[key], policy);
+    for (const id of Object.keys(items)) {
+      const h = hashStr(JSON.stringify(items[id]));
+      const changed = prevSnap[id] === undefined || prevSnap[id] !== h;
+      meta.ua[key][id] = changed ? now : (prevUA[id] != null ? prevUA[id] : now);
+      meta.snap[key][id] = h;
+      if (meta.tomb[key][id] != null && meta.ua[key][id] >= meta.tomb[key][id]) delete meta.tomb[key][id]; // re-added → clear tombstone
+    }
+    for (const id of Object.keys(prevSnap)) { // present last time, gone now → deleted locally
+      if (!(id in items) && meta.tomb[key][id] == null) meta.tomb[key][id] = now;
+    }
+  }
+  return meta;
+}
+
+// Merge two states by item. Adds union; the newer `updatedAt` wins an edit; a
+// tombstone whose ts ≥ the surviving item's ts removes it. Returns { state, meta }.
+function mergeState(localState, localMeta, remoteState, remoteMeta, now) {
+  localMeta = localMeta && localMeta.ua ? localMeta : emptyMeta();
+  remoteMeta = remoteMeta && remoteMeta.ua ? remoteMeta : emptyMeta();
+  const outState = {}, outMeta = emptyMeta();
+  for (const key of Object.keys(SYNC_POLICY)) {
+    const policy = SYNC_POLICY[key];
+    if (policy === "value") {
+      const lHas = localState[key] !== undefined, rHas = remoteState[key] !== undefined;
+      const lKv = (localMeta.kv[key] != null ? localMeta.kv[key] : (lHas ? 0 : -1));
+      const rKv = (remoteMeta.kv[key] != null ? remoteMeta.kv[key] : (rHas ? 0 : -1));
+      let win, kv;
+      if (rHas && (!lHas || rKv > lKv)) { win = remoteState[key]; kv = rKv; }
+      else if (lHas) { win = localState[key]; kv = lKv; }
+      if (win !== undefined) { outState[key] = win; outMeta.kv[key] = kv < 0 ? now : kv; outMeta.snap[key] = hashStr(JSON.stringify(win)); }
+      continue;
+    }
+    const lUA = localMeta.ua[key] || {}, rUA = remoteMeta.ua[key] || {};
+    const lTomb = localMeta.tomb[key] || {}, rTomb = remoteMeta.tomb[key] || {};
+    const tomb = {};
+    for (const id of new Set([...Object.keys(lTomb), ...Object.keys(rTomb)])) tomb[id] = Math.max(lTomb[id] || 0, rTomb[id] || 0);
+    const lItems = toItemMap(localState[key], policy), rItems = toItemMap(remoteState[key], policy);
+    const order = [...Object.keys(lItems), ...Object.keys(rItems).filter((id) => !(id in lItems))]; // local order first, then remote-only
+    const winners = {}, ua = {}, snap = {};
+    for (const id of order) {
+      if (id in winners) continue;
+      const lHas = id in lItems, rHas = id in rItems, lT = lUA[id] || 0, rT = rUA[id] || 0;
+      const item = rHas && (!lHas || rT > lT) ? rItems[id] : lItems[id];
+      const wT = rHas && (!lHas || rT > lT) ? rT : lT;
+      if ((tomb[id] || 0) >= wT && (tomb[id] || 0) > 0) continue; // deletion wins → item stays gone
+      winners[id] = item; ua[id] = wT || now; snap[id] = hashStr(JSON.stringify(item));
+    }
+    outState[key] = fromItemMap(winners, policy, order.filter((id) => id in winners));
+    outMeta.ua[key] = ua; outMeta.snap[key] = snap; outMeta.tomb[key] = tomb;
+  }
+  return { state: outState, meta: outMeta };
+}
+
+function pruneTombstones(meta, now, ttlMs) {
+  const cutoff = now - (ttlMs || TOMB_TTL_MS);
+  for (const key of Object.keys(meta.tomb || {})) {
+    for (const id of Object.keys(meta.tomb[key])) if (meta.tomb[key][id] < cutoff) delete meta.tomb[key][id];
+  }
+  return meta;
+}
+
+// True when two states carry the same items (order-insensitive) — used to decide
+// whether a merge produced anything the other side still needs.
+function sameForSync(a, b) {
+  for (const key of Object.keys(SYNC_POLICY)) {
+    const policy = SYNC_POLICY[key];
+    if (policy === "value") { if (JSON.stringify(a[key]) !== JSON.stringify(b[key])) return false; continue; }
+    const ma = toItemMap(a[key], policy), mb = toItemMap(b[key], policy);
+    const ka = Object.keys(ma); if (ka.length !== Object.keys(mb).length) return false;
+    for (const id of ka) if (!(id in mb) || JSON.stringify(ma[id]) !== JSON.stringify(mb[id])) return false;
+  }
+  return true;
+}
+
+function loadSyncMeta() { const m = store.get("org._syncmeta", null); return m && m.ua ? m : emptyMeta(); }
+function persistSyncMeta() { try { localStorage.setItem("org._syncmeta", JSON.stringify(syncMeta)); } catch {} }
+function writeStateToLocal(state) { SYNC_KEYS.forEach((k) => { if (k in state) localStorage.setItem(k, JSON.stringify(state[k])); }); }
+
+// Pull every synced key back into the in-memory vars and re-render all views.
+function refreshInMemoryAndRender() {
+  todos = store.get("org.todos", []);
+  shopping = store.get("org.shopping", []);
+  events = store.get("org.events", []);
+  reminders = store.get("org.reminders", []);
+  raids = store.get("org.raids", []);
+  tcgOwned = store.get("org.tcg", {});
+  recipes = store.get("org.recipes", []);
+  games = store.get("org.games", []);
+  canvasItems = store.get("org.canvas", []);
+  calLegend = store.get("org.callegend", {});
+  garden = store.get("org.idle", garden);
+  aiCfg = { ...AI_DEFAULTS, ...store.get("org.ai", {}) }; initAiConfigUI();
+  const th = store.get("org.theme", null); if (th) applyTheme(th);
+  renderTodos(); renderShopping(); renderCalLegend(); renderCalendar(); renderReminders();
+  renderRaids(); renderTCG(); renderRecipes(); renderGames(); renderCanvas(); renderGarden(); updateBadges();
+}
+
+// Merge a remote snapshot INTO local state (never a blind overwrite), re-render, and
+// push the union back only if we hold items the sender still lacks.
+function applyRemoteState(payload) {
+  if (!payload) return;
+  const now = Date.now();
+  const remoteState = stripMeta(payload);
+  const remoteMeta = payload._meta || legacyMeta(remoteState);
+  let changedForSender = false;
   syncApplying = true;
   try {
-    SYNC_KEYS.forEach((k) => {
-      if (k in data) localStorage.setItem(k, JSON.stringify(data[k]));
-    });
-    todos = store.get("org.todos", []);
-    shopping = store.get("org.shopping", []);
-    events = store.get("org.events", []);
-    reminders = store.get("org.reminders", []);
-    raids = store.get("org.raids", []);
-    tcgOwned = store.get("org.tcg", {});
-    recipes = store.get("org.recipes", []);
-    games = store.get("org.games", []);
-    canvasItems = store.get("org.canvas", []);
-    calLegend = store.get("org.callegend", {});
-    garden = store.get("org.idle", garden);
-    if ("org.ai" in data) { aiCfg = { ...AI_DEFAULTS, ...store.get("org.ai", {}) }; initAiConfigUI(); }
-    if (data["org.theme"]) applyTheme(data["org.theme"]);
-    renderTodos(); renderShopping(); renderCalLegend(); renderCalendar(); renderReminders();
-    renderRaids(); renderTCG(); renderRecipes(); renderGames(); renderCanvas(); renderGarden(); updateBadges();
+    const local = collectState();
+    syncMeta = deriveMeta(local, syncMeta, now); // fold in any local edits since last sync
+    const merged = mergeState(local, syncMeta, remoteState, remoteMeta, now);
+    syncMeta = pruneTombstones(merged.meta, now);
+    persistSyncMeta();
+    writeStateToLocal(merged.state);
+    refreshInMemoryAndRender();
+    changedForSender = !sameForSync(merged.state, remoteState);
   } finally {
     syncApplying = false;
   }
+  if (changedForSender) scheduleSyncPush(); // converge the cloud with our extra items
 }
 
 async function pushStateNow() {
   if (!syncUser || !sb) return;
-  const payload = { ...collectState(), _by: syncClientId, _ts: Date.now() };
+  const now = Date.now();
+  const local = collectState();
+  syncMeta = pruneTombstones(deriveMeta(local, syncMeta, now), now);
+  // Read the current cloud row and merge our local state into it, so a concurrent
+  // write from the other device is never clobbered by our upsert.
+  let cloudState = {}, cloudMeta = emptyMeta();
+  const { data: cur, error: readErr } = await sb.from("app_state").select("data").eq("user_id", syncUser.id).maybeSingle();
+  if (readErr) { console.error("[sync] push-read", readErr); setSyncStatus("Save failed: " + readErr.message, "warn"); return; }
+  if (cur && cur.data) { cloudState = stripMeta(cur.data); cloudMeta = cur.data._meta || legacyMeta(cloudState); }
+  const merged = mergeState(local, syncMeta, cloudState, cloudMeta, now);
+  syncMeta = pruneTombstones(merged.meta, now);
+  persistSyncMeta();
+  if (!sameForSync(merged.state, local)) { // cloud had newer items → reflect them locally
+    syncApplying = true;
+    try { writeStateToLocal(merged.state); refreshInMemoryAndRender(); } finally { syncApplying = false; }
+  }
+  const payload = { ...merged.state, _meta: syncMeta, _by: syncClientId, _ts: now };
   const { error } = await sb
     .from("app_state")
     .upsert({ user_id: syncUser.id, data: payload, updated_at: new Date().toISOString() }, { onConflict: "user_id" });

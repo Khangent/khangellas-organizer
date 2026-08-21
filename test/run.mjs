@@ -99,16 +99,23 @@ check("every init* function called at startup is defined", () => {
   for (const fn of called) assert(new RegExp(`function ${fn}\\b`).test(appSrc), `${fn}() is called but not defined`);
 });
 
-check("every SYNC_KEYS entry is reloaded in applyRemoteState()", () => {
+check("every SYNC_KEYS entry is reloaded in refreshInMemoryAndRender()", () => {
   const arr = appSrc.match(/const SYNC_KEYS = \[([^\]]*)\]/);
   assert(arr, "SYNC_KEYS array not found");
-  const keys = (arr[1].match(/"([^"]+)"/g) || []).map((s) => s.replace(/"/g, ""));
-  const start = appSrc.indexOf("function applyRemoteState");
-  const end = appSrc.indexOf("async function pushStateNow");
-  assert(start !== -1 && end > start, "could not locate applyRemoteState()");
+  const keys = (arr[1].match(/"([^"]+)"/g) || []).map((s) => s.replace(/"/g, "")).filter((k) => !k.startsWith("org._"));
+  const start = appSrc.indexOf("function refreshInMemoryAndRender");
+  const end = appSrc.indexOf("function applyRemoteState", start);
+  assert(start !== -1 && end > start, "could not locate refreshInMemoryAndRender()");
   const body = appSrc.slice(start, end);
   const missing = keys.filter((k) => !body.includes(k));
-  assert(missing.length === 0, "synced but not reloaded in applyRemoteState: " + missing.join(", "));
+  assert(missing.length === 0, "synced but not reloaded in refreshInMemoryAndRender: " + missing.join(", "));
+});
+
+check("every SYNC_KEYS entry has a SYNC_POLICY", () => {
+  const keys = ((appSrc.match(/const SYNC_KEYS = \[([^\]]*)\]/) || [])[1].match(/"([^"]+)"/g) || []).map((s) => s.replace(/"/g, ""));
+  const pol = (appSrc.match(/const SYNC_POLICY = \{([\s\S]*?)\};/) || [])[1] || "";
+  const missing = keys.filter((k) => !pol.includes(`"${k}"`));
+  assert(missing.length === 0, "SYNC_KEYS without a policy: " + missing.join(", "));
 });
 
 check("every save.X() call has a matching setter", () => {
@@ -168,7 +175,7 @@ function runApp() {
   const windowStub = { addEventListener() {}, removeEventListener() {} };
   const noop = () => {};
   const exportsTail =
-    "\n;return {num,round1,macroTotals,kcalOf,parseSteamId,personGold,raidStats,fmtGold,GAME_STATUS,PRIORITY_RANK,mkIngredient,GAME_ORDER,clampZoom,screenToWorld,worldToScreen,rectsOverlap,computeSnap,pushCapped,edgePoint,sunGain,growProgress,isRipe,plotCost,plotIndexAtX,recipeMacros};";
+    "\n;return {num,round1,macroTotals,kcalOf,parseSteamId,personGold,raidStats,fmtGold,GAME_STATUS,PRIORITY_RANK,mkIngredient,GAME_ORDER,clampZoom,screenToWorld,worldToScreen,rectsOverlap,computeSnap,pushCapped,edgePoint,sunGain,growProgress,isRipe,plotCost,plotIndexAtX,recipeMacros,SYNC_POLICY,deriveMeta,mergeState,pruneTombstones,sameForSync};";
   // eslint-disable-next-line no-new-func
   const factory = new Function(
     "window", "document", "localStorage", "alert", "confirm", "prompt", "console",
@@ -199,7 +206,105 @@ if (!api) {
 } else {
   const { num, round1, macroTotals, kcalOf, parseSteamId, personGold, raidStats, fmtGold,
           clampZoom, screenToWorld, worldToScreen, rectsOverlap, computeSnap, pushCapped, edgePoint,
-          sunGain, growProgress, isRipe, plotCost, plotIndexAtX, recipeMacros } = api;
+          sunGain, growProgress, isRipe, plotCost, plotIndexAtX, recipeMacros,
+          deriveMeta, mergeState, pruneTombstones, sameForSync } = api;
+
+  // ---- Sync merge core ----
+  // Helper: ids present in a merged list key, in order.
+  const idsOf = (state, key) => (state[key] || []).map((it) => it.id);
+
+  check("merge: concurrent adds on two devices keep BOTH entries", () => {
+    // Both start empty. A adds X @100, B adds Y @101.
+    const aState = { "org.todos": [{ id: "x", t: "X" }] };
+    const aMeta = deriveMeta(aState, undefined, 100);
+    const bState = { "org.todos": [{ id: "y", t: "Y" }] };
+    const bMeta = deriveMeta(bState, undefined, 101);
+    // B receives A's push and merges it in.
+    const m = mergeState(bState, bMeta, aState, aMeta, 102);
+    eq(idsOf(m.state, "org.todos").sort(), ["x", "y"]);
+  });
+
+  check("merge: a deletion beats a stale copy (item stays gone)", () => {
+    // Base has X. A deletes X. B still has the old X (unchanged since @100).
+    const base = { "org.todos": [{ id: "x", t: "X" }] };
+    const baseMeta = deriveMeta(base, undefined, 100);          // X stamped @100
+    const aDeleted = { "org.todos": [] };
+    const aMeta = deriveMeta(aDeleted, baseMeta, 200);          // X tombstoned @200
+    const bStale = { "org.todos": [{ id: "x", t: "X" }] };      // B unchanged, X still @100
+    const m = mergeState(bStale, baseMeta, aDeleted, aMeta, 300);
+    eq(idsOf(m.state, "org.todos"), []);                        // deletion wins
+  });
+
+  check("merge: editing an item after a delete resurrects it (newer ts wins)", () => {
+    const base = { "org.todos": [{ id: "x", t: "X" }] };
+    const baseMeta = deriveMeta(base, undefined, 100);
+    const aDeleted = { "org.todos": [] };
+    const aMeta = deriveMeta(aDeleted, baseMeta, 200);          // tombstone @200
+    const bEdited = { "org.todos": [{ id: "x", t: "X2" }] };
+    const bMeta = deriveMeta(bEdited, baseMeta, 250);           // edit @250 > tombstone
+    const m = mergeState(bEdited, bMeta, aDeleted, aMeta, 300);
+    eq(m.state["org.todos"], [{ id: "x", t: "X2" }]);
+  });
+
+  check("merge: same item edited on both sides — newest updatedAt wins", () => {
+    const base = { "org.todos": [{ id: "x", t: "X" }] };
+    const baseMeta = deriveMeta(base, undefined, 100);
+    const a = { "org.todos": [{ id: "x", t: "A" }] };
+    const aMeta = deriveMeta(a, baseMeta, 300);
+    const b = { "org.todos": [{ id: "x", t: "B" }] };
+    const bMeta = deriveMeta(b, baseMeta, 200);
+    const m = mergeState(b, bMeta, a, aMeta, 400);              // A(@300) newer than B(@200)
+    eq(m.state["org.todos"], [{ id: "x", t: "A" }]);
+  });
+
+  check("merge: map keys (tcg unlocks) from both devices are unioned", () => {
+    const a = { "org.tcg": { card1: true } };
+    const aMeta = deriveMeta(a, undefined, 100);
+    const b = { "org.tcg": { card2: true } };
+    const bMeta = deriveMeta(b, undefined, 101);
+    const m = mergeState(b, bMeta, a, aMeta, 102);
+    eq(m.state["org.tcg"], { card2: true, card1: true });
+  });
+
+  check("merge: a changed scalar (theme) beats an unchanged device", () => {
+    // A changed theme @200; B never touched it (stamped @0 as legacy).
+    const a = { "org.theme": "dark" };
+    const aMeta = deriveMeta(a, undefined, 200);
+    const b = { "org.theme": "light" };
+    const bMeta = { ua: {}, tomb: {}, kv: { "org.theme": 0 }, snap: { "org.theme": "z" } };
+    const m = mergeState(b, bMeta, a, aMeta, 300);
+    eq(m.state["org.theme"], "dark");
+  });
+
+  check("deriveMeta: stamps adds/edits and tombstones deletes", () => {
+    const s1 = { "org.todos": [{ id: "x", t: "X" }] };
+    const m1 = deriveMeta(s1, undefined, 100);
+    eq(m1.ua["org.todos"].x, 100);                              // add stamped
+    const s2 = { "org.todos": [{ id: "x", t: "X!" }] };
+    const m2 = deriveMeta(s2, m1, 200);
+    eq(m2.ua["org.todos"].x, 200);                              // edit re-stamped
+    const s3 = { "org.todos": [] };
+    const m3 = deriveMeta(s3, m2, 300);
+    eq(m3.tomb["org.todos"].x, 300);                            // delete tombstoned
+    const s4 = { "org.todos": [{ id: "x", t: "X!" }] };         // unchanged from s2
+    const m4 = deriveMeta(s4, m2, 400);
+    eq(m4.ua["org.todos"].x, 200);                              // unchanged keeps old ts
+  });
+
+  check("pruneTombstones: drops entries older than the TTL, keeps recent", () => {
+    const now = 1000 * 60 * 60 * 24 * 40; // day 40
+    const meta = { ua: {}, kv: {}, snap: {}, tomb: { "org.todos": { old: 1000, fresh: now - 1000 } } };
+    pruneTombstones(meta, now); // default 30-day TTL
+    eq("old" in meta.tomb["org.todos"], false);
+    eq(meta.tomb["org.todos"].fresh, now - 1000);
+  });
+
+  check("sameForSync: order-insensitive item comparison", () => {
+    const a = { "org.todos": [{ id: "x" }, { id: "y" }] };
+    const b = { "org.todos": [{ id: "y" }, { id: "x" }] };
+    eq(sameForSync(a, b), true);
+    eq(sameForSync(a, { "org.todos": [{ id: "x" }] }), false);
+  });
 
   check("num() coerces only positive finite numbers", () => {
     eq(num("5"), 5); eq(num("2.5"), 2.5); eq(num("abc"), 0); eq(num("-3"), 0);
